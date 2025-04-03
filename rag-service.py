@@ -16,13 +16,12 @@ class RAGService:
 
         self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
+
     def add_doc(self, path):
         start_value = 9
         pages = DocumentFile.from_pdf(path)
         out = self.ocr_model(pages[start_value:start_value+3]) # Seg fault if too large
-
         # print_plain_text(out)
-
         for page in out.pages:
             for block in page.blocks:
                 block_text = " ".join(
@@ -35,54 +34,65 @@ class RAGService:
                     embeddings=[block_embedding],
                     metadatas=[{
                         "pdf_path": path,
-                        "page_number": page.page_idx + 1 + start_value, # RENAME TO page_num
-                        "text": block_text # REMOVE THIS ISNT NEEDED
+                        "page_num": page.page_idx + 1 + start_value, # Remove start_value
                     }],
-                    ids=[f"{path}-{page.page_idx}-{hash(block_text)}"]
+                    ids=[f"{path}-{page.page_idx}-{block_embedding}"]
                 )
-
         print(f'Successfully stored Document {path}')
-
-    doc_path = '/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf'
-
 
 
     def find_docs(self, query, n=5):
         query_embedding = self.embedding_model.encode(query).tolist()
         results = self.collection.query(query_embeddings=[query_embedding], n_results=n)
-        
         # Extract metadata from results
         nearest_neighbors = results["metadatas"][0] if results["metadatas"] else []
         return nearest_neighbors
 
 
-
-    # REWORK
-    def gather_docs(self, results):
-        results_texts = ''
-        for res in results: # MAKE RESULT DOCUMENT PATHS UNIQUE
-            path = res['pdf_path']
-            page = res['page_number']
+    def gather_docs(self, doc_paths):
+        # Get unique document paths
+        unique_paths = list(set(doc_paths))
+        documents_text = []
+        
+        for path in unique_paths:
             pages = DocumentFile.from_pdf(path)
-            out = self.ocr_model([pages[page]]) # Seg fault if too large, REMOVE page selection
+            # Process all pages with OCR
+            out = self.ocr_model(pages)
 
-            results_texts = ''
+            all_blocks = []
             for page in out.pages:
                 for block in page.blocks:
-                    block_text = []
+                    processed_lines = []
                     for line in block.lines:
-                        line_text = " ".join(word.value for word in line.words)
-                        block_text.append(line_text)
-                    results_texts += "\n".join(block_text) + "\n" # Separator between blocks
-            results_texts += "\n\n\n\n"
+                        # Join words with spaces and strip trailing whitespace
+                        line_text = " ".join(word.value for word in line.words).rstrip()
+                    
+                        # Remove trailing hyphen if present
+                        if line_text.endswith('-'):
+                            line_text = line_text[:-1].rstrip()  # Remove hyphen and any remaining whitespace
+                    
+                        processed_lines.append(line_text)
+                
+                    # Join processed lines with single space
+                    block_text = " ".join(processed_lines)
+                    all_blocks.append(block_text)
         
-        return results_texts
-
+            # Join blocks with 2 newlines within document
+            document_text = "\n\n".join(all_blocks)
+            documents_text.append(document_text)
+    
+        # Join documents with 8 newlines between them
+        return "\n\n\n\n\n\n\n\n".join(documents_text)
+        
+        
+        
+        
 
 
 rag_service = RAGService()
 
 # Store document embeddings
+# doc_path = '/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf'
 # rag_service.add_doc(doc_path)
 
 # Example usage:
