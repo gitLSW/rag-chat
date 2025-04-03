@@ -52,7 +52,7 @@ class RAGService:
             print(f'Successfully stored page {i} Document {path}') # REMOVE i, ITS SO MY MISINSTALLED UBUNTU DOESN'T ALWAYS SEGFAULT. THE OCR CAN HANDLE WHOLE DOCS !!!!
 
 
-    def convert_block_to_text(block_data):
+    def convert_block_to_text(self, block_data):
         processed_lines = []
         for line in block_data.lines:
             # Join words with spaces and strip trailing whitespace
