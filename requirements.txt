@@ -1,0 +1,3 @@
+-e git+https://github.com/mindee/doctr.git#egg=python-doctr[torch]
+sentence_transformers
+chromadb
