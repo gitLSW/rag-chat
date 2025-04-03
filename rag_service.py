@@ -5,6 +5,7 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.utils import embedding_functions
 from openai import OpenAI as LLMApi
+import re
 
 # Configuration
 LLM_MODEL = 'deepseek-r1:32b'
@@ -68,9 +69,9 @@ class RAGService:
             return " ".join(processed_lines)
 
 
-    def find_docs(self, query, n_docs):
+    def find_docs(self, query, n_results):
         query_embedding = self.embedding_model.encode(query).tolist()
-        results = self.collection.query(query_embeddings=[query_embedding], n_results)
+        results = self.collection.query(query_embeddings=[query_embedding], n_results=n_results)
         # Extract metadata from results
         nearest_neighbors = results["metadatas"][0] if results["metadatas"] else []
         return nearest_neighbors
@@ -122,11 +123,13 @@ class RAGService:
             temperature=0.3
         )
 
-        sources_info = 'Matches were found in:\n'
+        sources_info = 'Consult these documents for more detail:\n'
         for path, pages in doc_sources_map.items():
             sources_info += f'{path} on pages {", ".join(map(str, pages))}\n'
 
-        return f'{sources_info}\n\n\n{response.choices[0].message.content}'
+        answer_text = re.sub(r'<think>.*?</think>', '', response.choices[0].message.content, flags=re.DOTALL)
+
+        return f'{sources_info}\n{answer_text}'
     
         
 rag_service = RAGService()
@@ -137,5 +140,5 @@ rag_service = RAGService()
 # rag_service.add_doc(doc_path)
 
 # Example usage:
-answer = rag_service.query_llm("Who is charlemagne?", 5)
+answer = rag_service.query_llm("How did charlemagne and Harun view each other?", n_results=5)
 print(answer)
