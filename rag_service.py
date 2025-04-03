@@ -54,9 +54,9 @@ class RAGService:
             print(f'Successfully stored page {i} Document {path}') # REMOVE i, ITS SO MY MISINSTALLED UBUNTU DOESN'T ALWAYS SEGFAULT. THE OCR CAN HANDLE WHOLE DOCS !!!!
 
 
-    def find_docs(self, query, n=5):
+    def find_docs(self, query, n_docs):
         query_embedding = self.embedding_model.encode(query).tolist()
-        results = self.collection.query(query_embeddings=[query_embedding], n_results=n)
+        results = self.collection.query(query_embeddings=[query_embedding], n_results)
         # Extract metadata from results
         nearest_neighbors = results["metadatas"][0] if results["metadatas"] else []
         return nearest_neighbors
@@ -99,8 +99,8 @@ class RAGService:
         return "\n\n\n\n\n\n\n\n".join(documents_text)
         
 
-    def query_llm(self, question, context_sources_num):
-        found_docs_data = rag_service.find_docs(question, 5)
+    def query_llm(self, question, n_results=5):
+        found_docs_data = rag_service.find_docs(question, n_results)
         # print(found_docs_data)
 
         # map search results to dict
