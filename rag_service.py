@@ -37,9 +37,7 @@ class RAGService:
             # print_plain_text(out)
             for page in out.pages:
                 for block in page.blocks:
-                    block_text = " ".join(
-                        " ".join(word.value for word in line.words) for line in block.lines
-                    )
+                    block_text = self.convert_block_to_text(block)
                     block_embedding = self.embedding_model.encode(block_text).tolist()
 
                     # Store in ChromaDB
@@ -52,6 +50,22 @@ class RAGService:
                         }]
                     )
             print(f'Successfully stored page {i} Document {path}') # REMOVE i, ITS SO MY MISINSTALLED UBUNTU DOESN'T ALWAYS SEGFAULT. THE OCR CAN HANDLE WHOLE DOCS !!!!
+
+
+    def convert_block_to_text(block_data):
+        processed_lines = []
+        for line in block_data.lines:
+            # Join words with spaces and strip trailing whitespace
+            line_text = " ".join(word.value for word in line.words).rstrip()
+                        
+            # Remove trailing hyphen if present
+            if line_text.endswith('-'):
+                line_text = line_text[:-1].rstrip()  # Remove hyphen and any remaining whitespace
+            
+            processed_lines.append(line_text)
+            
+            # Join processed lines with single space
+            return " ".join(processed_lines)
 
 
     def find_docs(self, query, n_docs):
@@ -76,19 +90,7 @@ class RAGService:
                 all_blocks = []
                 for page in out.pages:
                     for block in page.blocks:
-                        processed_lines = []
-                        for line in block.lines:
-                            # Join words with spaces and strip trailing whitespace
-                            line_text = " ".join(word.value for word in line.words).rstrip()
-                        
-                            # Remove trailing hyphen if present
-                            if line_text.endswith('-'):
-                                line_text = line_text[:-1].rstrip()  # Remove hyphen and any remaining whitespace
-                        
-                            processed_lines.append(line_text)
-                    
-                        # Join processed lines with single space
-                        block_text = " ".join(processed_lines)
+                        block_text = self.convert_block_to_text(block)
                         all_blocks.append(block_text)
             
                 # Join blocks with 2 newlines within document
