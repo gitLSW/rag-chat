@@ -8,16 +8,23 @@ Install the required packages by running:
 
 ```bash
 pip install -r requirements.txt
+```
 
 ## Usage
 
 ### Initialize
+```python
 rag_service = RAGService()
+```
 
 ### Add Documents to VectorDB for semantic search
+```python
 rag_service.add_doc('path/to/your/document1')
 rag_service.add_doc('path/to/your/document2')
+```
 
 ### Example usage (queries the LLM with retrieved doc content)
+```python
 answer = rag_service.query_llm("What is the meaning of life ?", n_results=5)
 print(answer)
+```
