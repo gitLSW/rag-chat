@@ -9,6 +9,7 @@ from openai import OpenAI as LLMApi  # Used to call local or remote large langua
 import re
 import os
 import fsspec
+import json
 
 # Configuration
 LLM_MODEL = 'deepseek-r1:32b'  # The specific LLM model used to answer questions
@@ -38,7 +39,7 @@ class RAGService:
                                        reco_arch=TEXT_RECOGNITION_MODEL,
                                        pretrained=True,
                                        assume_straight_pages=True,
-                                       preserve_aspect_ratio=True)#.to(DEVICE)
+                                       preserve_aspect_ratio=True).to(DEVICE)
         self.ocr_model.doc_builder.resolve_lines = True  # Group words into lines
         self.ocr_model.doc_builder.resolve_blocks = True  # Group lines into blocks (paragraphs)
 
@@ -82,11 +83,11 @@ class RAGService:
                 # Store the text and its embedding in the vector DB (ChromaDB)
                 self.collection.upsert(
                     embeddings=[block_embedding],
-                    ids=[f"{path.replace('.pdf', '')}-{page.page_idx}-{hash(str(block_embedding))}"],
+                    ids=[str(hash(str(block_embedding)))],
                     metadatas=[{
-                        'txt_path': txt_path,
+                        'path': path,
                         'page_num': page.page_idx + 1,
-                        'access_groups': access_groups
+                        'access_groups': json.dumps(access_groups)
                     }]
                 )
 
@@ -167,11 +168,11 @@ class RAGService:
         
         for path in unique_paths:
             # Read plain text content from converted .txt document
-            with fsspec.open(path, 'r') as f:
+            with fsspec.open(path.replace('.pdf', '.txt'), 'r') as f:
                 documents_text.append(f.read())
     
         # Separate different documents with more spacing
-        return "\n\n\n\n\n\n\n\nNext Relevant File:\n".join(documents_text)
+        return "\n\n\n\n\n\n\n\nNext Relevant Text:\n".join(documents_text)
         
 
     def query_llm(self, question, access_role, n_results=5):
@@ -179,7 +180,7 @@ class RAGService:
         Answers a user question by retrieving relevant document content and querying a local LLM.
 
         Args:
-            question (str): The user’s natural language question.
+            question (str): The user's natural language question.
             n_results (int): Number of document chunks to retrieve for context (default is 5).
 
         Returns:
@@ -191,15 +192,15 @@ class RAGService:
         # Step 2: Group results by document and page
         doc_sources_map = defaultdict(set)
         for doc_data in found_docs_data:
-            if doc_data['access_groups'].contains(access_role):
-                doc_sources_map[doc_data['txt_path']].add(doc_data['page_num'])
-        doc_sources_map = dict(doc_sources_map)
-
+            access_groups = json.loads(doc_data['access_groups'])
+            if access_role in access_groups:
+                doc_sources_map[doc_data['path']].add(doc_data['page_num'])
+        
         # Step 3: Extract and aggregate text from relevant documents
         docs_text = self.gather_docs_knowledge(doc_sources_map.keys())
         
         # Step 4: Build prompt and query the LLM
-        prompt = f"{question}\n\n\n\n\nUse the following information to answer:\n\n\n{docs_text}"
+        prompt = f"{question}\n\n\n\n\nDo not summarize unless asked, instead use the following texts to briefly and precisely answer the question in a concise manner:\n\n\n{docs_text}"
 
         # Send prompt to local LLM (e.g., Ollama)
         response = self.llm_client.chat.completions.create(
@@ -211,9 +212,9 @@ class RAGService:
         # Step 5: Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
         for path, pages in doc_sources_map.items():
-            sources_info += f'{path} on pages {", ".join(map(str, list(pages).sort()))}\n'
+            sources_info += f'{path} on pages {", ".join(map(str, sorted(pages)))}\n'
 
         # Strip out internal model markers like <think> tags
         answer_text = re.sub(r'<think>.*?</think>', '', response.choices[0].message.content, flags=re.DOTALL)
 
-        return f'{sources_info}\n{answer_text}'
+        return sources_info + answer_text
