@@ -1,3 +1,4 @@
+import torch
 from doctr.io import DocumentFile
 from doctr.models import ocr_predictor  # OCR = Optical Character Recognition, extracts text from images or PDFs
 from collections import defaultdict
@@ -15,6 +16,8 @@ EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to genera
 TEXT_DETECTION_MODEL = 'fast_base'  # Model for detecting where text is on the page
 TEXT_RECOGNITION_MODEL = 'crnn_vgg16_bn'  # Model for recognizing characters within the detected text regions
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 class RAGService:
     def __init__(self):
         """
@@ -31,7 +34,11 @@ class RAGService:
         self.collection = self.client.get_or_create_collection(name="documents")
 
         # Load OCR model with text detection and recognition components
-        self.ocr_model = ocr_predictor(det_arch=TEXT_DETECTION_MODEL, reco_arch=TEXT_RECOGNITION_MODEL, pretrained=True, assume_straight_pages=True, preserve_aspect_ratio=True)
+        self.ocr_model = ocr_predictor(det_arch=TEXT_DETECTION_MODEL,
+                                       reco_arch=TEXT_RECOGNITION_MODEL,
+                                       pretrained=True,
+                                       assume_straight_pages=True,
+                                       preserve_aspect_ratio=True)#.to(DEVICE)
         self.ocr_model.doc_builder.resolve_lines = True  # Group words into lines
         self.ocr_model.doc_builder.resolve_blocks = True  # Group lines into blocks (paragraphs)
 
@@ -45,7 +52,7 @@ class RAGService:
         self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
 
-    def add_doc(self, path):
+    def add_doc(self, path, access_groups):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -68,22 +75,39 @@ class RAGService:
         
         for page in doc.pages:
             for block in page.blocks:
-                block_text = self.convert_block_to_text(block)
-                # Convert block text into an embedding (vector representation)
+                block_text = self.convert_block_data_to_text(block)
+                # Convert paragraph into an embedding (vector representation)
                 block_embedding = self.embedding_model.encode(block_text).tolist()
 
                 # Store the text and its embedding in the vector DB (ChromaDB)
                 self.collection.upsert(
                     embeddings=[block_embedding],
-                    ids=[f"{path.replace('.pdf', '')}-{page.page_idx}-{hash(block_text)}"],
+                    ids=[f"{path.replace('.pdf', '')}-{page.page_idx}-{hash(str(block_embedding))}"],
                     metadatas=[{
-                        "path": txt_path,
-                        "page_num": page.page_idx + 1
+                        'txt_path': txt_path,
+                        'page_num': page.page_idx + 1,
+                        'access_groups': access_groups
                     }]
                 )
 
         print(f'Successfully stored Document {path}')
         return txt_path
+
+
+    def convert_block_data_to_text(self, block_data):
+        lines = []
+        for line in block_data.lines:
+            # Join words with spaces and strip trailing whitespace
+            line_text = " ".join(word.value for word in line.words).rstrip()
+                        
+            # Remove trailing hyphen if present
+            if line_text.endswith('-'):
+                line_text = line_text[:-1].rstrip()  # Remove hyphen and any remaining whitespace
+            
+            lines.append(line_text)
+            
+        # Join processed lines with single space
+        return " ".join(lines)
 
 
     def convert_doc_data_to_text(self, doc_data):
@@ -96,24 +120,14 @@ class RAGService:
         Returns:
             str: Text content from the document.
         """
-        all_blocks = []
+        blocks = []
         for page in doc_data.pages:
             for block in page.blocks:
-                block_text = []
-                for line in block.lines:
-                    # Combine individual words in the line
-                    line_text = " ".join(word.value for word in line.words).rstrip()
-                    
-                    # Handle hyphenated line breaks
-                    if line_text.endswith('-'):
-                        line_text = line_text[:-1].rstrip()
-                    
-                    block_text.append(line_text)
-
-                all_blocks.append(" ".join(block_text))
+                block_text = self.convert_block_data_to_text(block)
+                blocks.append(block_text)
     
         # Separate text blocks within a document
-        return "\n\n".join(all_blocks)
+        return "\n\n".join(blocks)
 
 
     def find_docs(self, question, n_results):
@@ -133,7 +147,7 @@ class RAGService:
         results = self.collection.query(query_embeddings=[question_embedding], n_results=n_results)
         
         # Return metadata of top matching results (e.g., file path and page number)
-        nearest_neighbors = results["metadatas"][0] if results["metadatas"] else []
+        nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         return nearest_neighbors
 
 
@@ -157,10 +171,10 @@ class RAGService:
                 documents_text.append(f.read())
     
         # Separate different documents with more spacing
-        return "\n\n\n\n\n\n\n\n".join(documents_text)
+        return "\n\n\n\n\n\n\n\nNext Relevant File:\n".join(documents_text)
         
 
-    def query_llm(self, question, n_results=5):
+    def query_llm(self, question, access_role, n_results=5):
         """
         Answers a user question by retrieving relevant document content and querying a local LLM.
 
@@ -177,7 +191,8 @@ class RAGService:
         # Step 2: Group results by document and page
         doc_sources_map = defaultdict(set)
         for doc_data in found_docs_data:
-            doc_sources_map[doc_data['path']].add(doc_data['page_num'])
+            if doc_data['access_groups'].contains(access_role):
+                doc_sources_map[doc_data['txt_path']].add(doc_data['page_num'])
         doc_sources_map = dict(doc_sources_map)
 
         # Step 3: Extract and aggregate text from relevant documents
@@ -202,10 +217,3 @@ class RAGService:
         answer_text = re.sub(r'<think>.*?</think>', '', response.choices[0].message.content, flags=re.DOTALL)
 
         return f'{sources_info}\n{answer_text}'
-    
-rag = RAGService()
-rag.add_doc('/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf')
-# rag.add_doc('/home/lsw/Downloads/_ALL THESIS/_On the usefulness of context data.pdf')
-
-
-# rag.query_llm('What gifts did charlemagne exchange with harun ?')
