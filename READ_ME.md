@@ -20,8 +20,8 @@ rag_service = RAGService()
 
 Add Documents to VectorDB for semantic search
 ```python
-rag_service.add_doc('path/to/your/document1', access_groups=['group1, group2])
-rag_service.add_doc('path/to/your/document2', access_groups=['group2])
+rag_service.add_doc('path/to/your/document1', access_groups=['group1', 'group2'])
+rag_service.add_doc('path/to/your/document2', access_groups=['group2'])
 ```
 
 Example LLM Query usage (performs a semantic document search and provides the LLM with the relevant documents)
