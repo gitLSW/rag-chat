@@ -6,6 +6,8 @@ import chromadb  # A vector database for storing and retrieving paragraph embedd
 from chromadb.utils import embedding_functions
 from openai import OpenAI as LLMApi  # Used to call local or remote large language models (LLMs)
 import re
+import os
+import fsspec
 
 # Configuration
 LLM_MODEL = 'deepseek-r1:32b'  # The specific LLM model used to answer questions
@@ -43,24 +45,11 @@ class RAGService:
         self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
 
-    def read_doc(self, path):
-        """
-        Reads a PDF file from the given path and runs OCR to extract structured content.
-
-        Args:
-            path (str): Path to the PDF file.
-
-        Returns:
-            Document: A Doctr-processed document object containing pages, blocks, lines, and words.
-        """
-        # Load and process PDF file using OCR
-        pages = DocumentFile.from_pdf(path)
-        return self.ocr_model(pages)
-
-
     def add_doc(self, path):
         """
-        Processes a document and adds its paragraphs and their embeddings to the vector database.
+        Reads a PDF file from the given path and runs OCR to extract structured content.
+        Saves the conent as a .txt file in the same location
+        Then it adds its paragraphs and their embeddings to the vector database.
 
         Args:
             path (str): Path to the document file (PDF).
@@ -68,7 +57,15 @@ class RAGService:
         Returns:
             None
         """
-        doc = self.read_doc(path)
+        # Load and process PDF file using OCR
+        pages = DocumentFile.from_pdf(path)
+        doc = self.ocr_model(pages)
+
+        # Save the OCR extracted content in .txt file
+        txt_path = path.replace('.pdf', '.txt')
+        with fsspec.open(txt_path, 'w') as f:
+            f.write(self.convert_doc_data_to_text(doc))
+        
         for page in doc.pages:
             for block in page.blocks:
                 block_text = self.convert_block_to_text(block)
@@ -78,38 +75,45 @@ class RAGService:
                 # Store the text and its embedding in the vector DB (ChromaDB)
                 self.collection.upsert(
                     embeddings=[block_embedding],
-                    ids=[f"{path}-{page.page_idx}-{hash(block_text)}"],
+                    ids=[f"{path.replace('.pdf', '')}-{page.page_idx}-{hash(block_text)}"],
                     metadatas=[{
-                        "pdf_path": path,
+                        "path": txt_path,
                         "page_num": page.page_idx + 1
                     }]
                 )
+
         print(f'Successfully stored Document {path}')
+        return txt_path
 
 
-    def convert_block_to_text(self, block_data):
+    def convert_doc_data_to_text(self, doc_data):
         """
-        Converts an OCR block (paragraph) into plain text.
+        Converts an OCR document into plain text.
 
         Args:
-            block_data: A block object from Doctr OCR output.
+            block_data: A doc object from docTR OCR output.
 
         Returns:
-            str: Text content from the block, joined line by line.
+            str: Text content from the document.
         """
-        processed_lines = []
-        for line in block_data.lines:
-            # Combine individual words in the line
-            line_text = " ".join(word.value for word in line.words).rstrip()
-            
-            # Handle hyphenated line breaks
-            if line_text.endswith('-'):
-                line_text = line_text[:-1].rstrip()
-            
-            processed_lines.append(line_text)
-            
-            # Only returning the first line here due to early return
-            return " ".join(processed_lines)
+        all_blocks = []
+        for page in doc_data.pages:
+            for block in page.blocks:
+                block_text = []
+                for line in block.lines:
+                    # Combine individual words in the line
+                    line_text = " ".join(word.value for word in line.words).rstrip()
+                    
+                    # Handle hyphenated line breaks
+                    if line_text.endswith('-'):
+                        line_text = line_text[:-1].rstrip()
+                    
+                    block_text.append(line_text)
+
+                all_blocks.append(" ".join(block_text))
+    
+        # Separate text blocks within a document
+        return "\n\n".join(all_blocks)
 
 
     def find_docs(self, question, n_results):
@@ -148,17 +152,9 @@ class RAGService:
         documents_text = []
         
         for path in unique_paths:
-            doc = self.read_doc(path)
-
-            all_blocks = []
-            for page in doc.pages:
-                for block in page.blocks:
-                    block_text = self.convert_block_to_text(block)
-                    all_blocks.append(block_text)
-        
-            # Separate text blocks within a document
-            document_text = "\n\n".join(all_blocks)
-            documents_text.append(document_text)
+            # Read plain text content from converted .txt document
+            with fsspec.open(path, 'r') as f:
+                documents_text.append(f.read())
     
         # Separate different documents with more spacing
         return "\n\n\n\n\n\n\n\n".join(documents_text)
@@ -176,16 +172,16 @@ class RAGService:
             str: Final LLM-generated answer with source references.
         """
         # Step 1: Perform semantic search for relevant document sections
-        found_docs_data = rag_service.find_docs(question, n_results)
+        found_docs_data = self.find_docs(question, n_results)
 
         # Step 2: Group results by document and page
         doc_sources_map = defaultdict(set)
         for doc_data in found_docs_data:
-            doc_sources_map[doc_data['pdf_path']].add(doc_data['page_num'])
+            doc_sources_map[doc_data['path']].add(doc_data['page_num'])
         doc_sources_map = dict(doc_sources_map)
 
         # Step 3: Extract and aggregate text from relevant documents
-        docs_text = rag_service.gather_docs_knowledge(doc_sources_map.keys())
+        docs_text = self.gather_docs_knowledge(doc_sources_map.keys())
         
         # Step 4: Build prompt and query the LLM
         prompt = f"{question}\n\n\n\n\nUse the following information to answer:\n\n\n{docs_text}"
@@ -200,9 +196,16 @@ class RAGService:
         # Step 5: Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
         for path, pages in doc_sources_map.items():
-            sources_info += f'{path} on pages {", ".join(map(str, pages))}\n'
+            sources_info += f'{path} on pages {", ".join(map(str, list(pages).sort()))}\n'
 
         # Strip out internal model markers like <think> tags
         answer_text = re.sub(r'<think>.*?</think>', '', response.choices[0].message.content, flags=re.DOTALL)
 
         return f'{sources_info}\n{answer_text}'
+    
+rag = RAGService()
+rag.add_doc('/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf')
+# rag.add_doc('/home/lsw/Downloads/_ALL THESIS/_On the usefulness of context data.pdf')
+
+
+# rag.query_llm('What gifts did charlemagne exchange with harun ?')

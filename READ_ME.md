@@ -4,6 +4,7 @@ RAG (Retrieval Augmented Generation) is an approach that combines a large langua
 
 ## Installation
 
+Use python 3.11.0 and CUDA 12.6 (I used NVIDIA GPU Driver Version: 560.35.03)
 Install the required packages by running:
 
 ```bash
@@ -23,13 +24,13 @@ rag_service.add_doc('path/to/your/document1')
 rag_service.add_doc('path/to/your/document2')
 ```
 
-Example LLM Query usage (performs a semantic document search and provides the LLM with the relevant document)
+Example LLM Query usage (performs a semantic document search and provides the LLM with the relevant documents)
 ```python
 answer = rag_service.query_llm("What is the meaning of life ?", n_results=5)
 print(answer)
 ```
 
-Example of semantic document search
+Example of semantic document search finding the 5 most similar paragraphs
 ```python
 docs = rag_service.find_docs("What is the meaning of life ?", n_results=5)
 ```
