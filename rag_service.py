@@ -190,17 +190,26 @@ class RAGService:
         found_docs_data = self.find_docs(question, n_results)
 
         # Step 2: Group results by document and page
+        summarized_docs = ''
         doc_sources_map = defaultdict(set)
         for doc_data in found_docs_data:
             access_groups = json.loads(doc_data['access_groups'])
             if access_role in access_groups:
                 doc_sources_map[doc_data['path']].add(doc_data['page_num'])
-        
-        # Step 3: Extract and aggregate text from relevant documents
-        docs_text = self.gather_docs_knowledge(doc_sources_map.keys())
-        
+
+            # Step 3: Extract and aggregate text from relevant documents
+            doc_text = self.gather_docs_knowledge([doc_data['path']])
+            summarize_prompt = f'{question}\n\nSummarize all the relevant information and facts needed to answer the question in a manner from the following text:\n\n{doc_text}'
+            doc_summary = self.llm_client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[{"role": "user", "content": summarize_prompt}],
+                temperature=0.3
+            )
+            doc_summary = re.sub(r'<think>.*?</think>', '', doc_summary.choices[0].message.content, flags=re.DOTALL)
+            summarized_docs += f'{doc_summary}\n\n'
+
         # Step 4: Build prompt and query the LLM
-        prompt = f"{question}\n\n\n\n\nDo not summarize unless asked, instead use the following texts to briefly and precisely answer the question in a concise manner:\n\n\n{docs_text}"
+        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n{summarized_docs}"
 
         # Send prompt to local LLM (e.g., Ollama)
         response = self.llm_client.chat.completions.create(
