@@ -17,7 +17,7 @@ EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to genera
 TEXT_DETECTION_MODEL = 'fast_base'  # Model for detecting where text is on the page
 TEXT_RECOGNITION_MODEL = 'crnn_vgg16_bn'  # Model for recognizing characters within the detected text regions
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:0") # It must run on a gpu or it will seg fault.
 
 class RAGService:
     def __init__(self):
@@ -42,7 +42,7 @@ class RAGService:
                                        preserve_aspect_ratio=True).to(DEVICE)
         self.ocr_model.doc_builder.resolve_lines = True  # Group words into lines
         self.ocr_model.doc_builder.resolve_blocks = True  # Group lines into blocks (paragraphs)
-
+        
         # Connect to a local LLM (e.g., via Ollama)
         self.llm_client = LLMApi(
             base_url="http://localhost:11434/v1",  # Ollama's default port
