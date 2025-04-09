@@ -185,11 +185,11 @@ class RAGService:
         summarized_docs = ''
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            doc_sources_map[path].add(doc_data['page_num'])
+            doc_path = doc_data['path']
+            doc_sources_map[doc_path].add(doc_data['page_num'])
 
             # Step 3: Extract and aggregate text from relevant documents
-            txt_path = doc_data['path'] + '.txt'
-            doc_text = self._gather_docs_knowledge([txt_path])
+            doc_text = self._gather_docs_knowledge([doc_path])
             summarize_prompt = f'{question}\n\nSummarize all the relevant information and facts needed to answer the question in a manner from the following text:\n\n{doc_text}'
             doc_summary = self.llm_client.chat.completions.create(
                 model=LLM_MODEL,
@@ -272,17 +272,20 @@ class RAGService:
         
         for path in unique_paths:
             # Read plain text content from converted .txt document
-            with open(path, 'r') as f:
+            with open(path + '.txt', 'r') as f:
                 documents_text.append(f.read())
     
         # Separate different documents with more spacing
         return "\n\n\n\n\n\n\n\nNext Relevant Text:\n".join(documents_text)
 
     
-rag = RAGService()
-rag.add_doc('/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf', ['accounting', 'management'], 'test')
-# rag.add_doc('/home/lsw/Downloads/_ALL THESIS/_On the usefulness of context data.pdf', ['accounting', 'management'])
-rag.add_doc('/home/lsw/Downloads/AlexanderMeetingDiogines.pdf', ['accounting', 'management'], 'management')
+rag = RAGService('MyCompany')
+# rag.add_doc('/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID')
+# rag.add_doc('/home/lsw/Downloads/AlexanderMeetingDiogines')
+# rag.add_doc('/home/lsw/Downloads/_ALL THESIS/_On the usefulness of context data.pdf')
 
-response = rag.query_llm('Did Charlemagne ever meet Alexander the Great ?', 'management')
+question = 'Did Charlemagne ever meet Alexander the Great ?'
+
+docs_data = rag.find_docs(question, 5)
+response = rag.query_llm(question, docs_data)
 print(response)
