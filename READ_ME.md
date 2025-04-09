@@ -8,9 +8,11 @@ RAG (Retrieval Augmented Generation) is an approach that combines a large langua
 
 2. Install Nvidia container toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 
-3. Download huggingface container:
+3. Select a llm model-id from huggingface. I used: https://huggingface.co/RedHatAI/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/commit/6e2aaab7812b2bf23c0705bc14463a535e49450c?utm_source=chatgpt.com, so my model-id is RedHatAI/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8
+
+4. Download huggingface container and model:
 ```bash
-sudo docker run --gpus all --shm-size 1g -p 8080:80 -v $PWD/data:/data ghcr.io/huggingface/text-generation-inference:latest --model-id deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
+sudo docker run --gpus all --shm-size 1g -p 8080:80 -v $PWD/data:/data ghcr.io/huggingface/text-generation-inference:latest --model-id <model-id>
 ```
 
 

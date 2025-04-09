@@ -58,7 +58,7 @@ class RAGService:
         - Connects to a local LLM API (e.g., via Ollama).
         - Loads a sentence transformer for generating vector embeddings of text.
         """
-        self.collection = RAGService.db_client.get_or_create_collection(name=collection)
+        self.collection = RAGService.db_client.get_or_create_collection(name=collection) # TODO: Check if this raises an exception, it should
         
 
     def add_doc(self, path):
@@ -83,7 +83,7 @@ class RAGService:
 
         lock = FileLock(txt_path)
         with lock:
-            with open(txt_path, 'w') as f:
+            with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(RAGService._convert_doc_data_to_text(doc))
 
         for page in doc.pages:
@@ -113,7 +113,7 @@ class RAGService:
         new_txt_path = new_path + '.txt'
         
         # Perform the file move/rename
-        os.rename(old_txt_path, new_txt_path)
+        os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
         
         # Update ChromaDB metadata
         doc_entries = self.collection.get(where={"path": old_path})
@@ -138,7 +138,7 @@ class RAGService:
         txt_path = path + '.txt'
         
         # Delete file
-        os.remove(txt_path)
+        os.remove(txt_path) # TODO: Check if this raises an exception, it should
         
         # Delete from DB
         self.collection.delete(where={'path': path})

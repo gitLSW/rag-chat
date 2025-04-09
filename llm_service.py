@@ -18,9 +18,6 @@ class LLMService:
         """
         response = await self.client.generate(question)
         return response.generated_text
-    
-
-
 
 
 
