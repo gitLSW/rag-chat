@@ -125,6 +125,12 @@ class RAGService:
         if access_rights != None and not access_role in access_rights:
             return # INSUFFICIENT RIGHTS
         
+        lock = FileLock(ACCESS_TABLE_PATH)
+        with lock:
+            with open(ACCESS_TABLE_PATH, 'w') as f:
+                del self.access_rights[txt_path]
+                json.dump(self.access_rights, f)
+        
         try:
             # Delete file
             os.remove(txt_path)
