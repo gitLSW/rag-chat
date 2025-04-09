@@ -8,6 +8,7 @@ __pycache__/
 
 # DB
 chroma_db/
+access_rights.json
 
 # Distribution / packaging
 .Python
