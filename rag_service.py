@@ -146,27 +146,61 @@ class RAGService:
 
     # TEST THIS FUNCTION
     def update_doc(self, access_role, path, new_path, new_access_groups):
-        txt_path = path.replace('.pdf', '.txt')
-        access_rights = self.access_rights.get(txt_path)
-        if access_rights != None and not access_role in access_rights:
-            return # INSUFFICIENT RIGHTS
+        # Convert PDF paths to TXT paths
+        old_txt_path = path.replace('.pdf', '.txt')
+        new_txt_path = new_path.replace('.pdf', '.txt')
         
-        lock = FileLock(ACCESS_TABLE_PATH)
-        with lock:
-            with open(ACCESS_TABLE_PATH, 'w') as f:
-                self.access_rights[txt_path] = new_access_groups
-                json.dump(self.access_rights, f)
+        # Check access rights
+        access_rights = self.access_rights.get(old_txt_path)
+        if access_rights is not None and access_role not in access_rights:
+            return False  # INSUFFICIENT RIGHTS
         
-        # Find all entries that match the old path
-        doc_entries = self.collection.get(where={"txt_path": txt_path})
-
-        # Update each entry with the new path
-        for doc_id in doc_entries["ids"]:
-            self.collection.update(
-                ids=[doc_id],
-                metadata={"txt_path": new_path.replace('.pdf', '.txt')}
-            )
-
+        # Check if source TXT file exists
+        if not os.path.exists(old_txt_path):
+            print(f"Error: Source text file '{old_txt_path}' not found.")
+            return False
+        
+        # Check if destination TXT file already exists
+        if os.path.exists(new_txt_path):
+            print(f"Error: Destination text file '{new_txt_path}' already exists.")
+            return False
+        
+        try:
+            # Perform the file move/rename
+            os.rename(old_txt_path, new_txt_path)
+            
+            # Update access rights
+            lock = FileLock(ACCESS_TABLE_PATH)
+            with lock:
+                # Remove old entry and add new one
+                if old_txt_path in self.access_rights:
+                    self.access_rights[new_txt_path] = new_access_groups
+                    del self.access_rights[old_txt_path]
+                
+                with open(ACCESS_TABLE_PATH, 'w') as f:
+                    json.dump(self.access_rights, f)
+            
+            # Update ChromaDB metadata
+            doc_entries = self.collection.get(where={"txt_path": old_txt_path})
+            
+            for doc_id in doc_entries["ids"]:
+                # Preserve all existing metadata, only update the path
+                current_metadata = self.collection.get(ids=[doc_id])["metadatas"][0]
+                updated_metadata = {
+                    **current_metadata,  # Keep all existing metadata
+                    "txt_path": new_txt_path  # Only update the path
+                }
+                self.collection.update(
+                    ids=[doc_id],
+                    metadatas=[updated_metadata]
+                )
+            
+            return True
+        
+        except Exception as e:
+            print(f"Error during file operation: {str(e)}")
+            return False
+    
 
     def convert_block_data_to_text(self, block_data):
         lines = []
