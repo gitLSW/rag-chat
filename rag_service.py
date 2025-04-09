@@ -6,9 +6,9 @@ from sentence_transformers import SentenceTransformer  # Pretrained model to con
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from chromadb.utils import embedding_functions
 from openai import OpenAI as LLMApi  # Used to call local or remote large language models (LLMs)
+from filelock import FileLock
 import re
 import os
-import fsspec
 import json
 
 # Configuration
@@ -17,7 +17,9 @@ EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to genera
 TEXT_DETECTION_MODEL = 'fast_base'  # Model for detecting where text is on the page
 TEXT_RECOGNITION_MODEL = 'crnn_vgg16_bn'  # Model for recognizing characters within the detected text regions
 
-DEVICE = torch.device("cuda:0") # It must run on a gpu or it will seg fault.
+DEVICE = torch.device("cuda:0") # The OCR must run on a gpu or it will seg fault.
+
+ACCESS_TABLE_PATH = './access_rights.json'
 
 class RAGService:
     def __init__(self):
@@ -42,7 +44,7 @@ class RAGService:
                                        preserve_aspect_ratio=True).to(DEVICE)
         self.ocr_model.doc_builder.resolve_lines = True  # Group words into lines
         self.ocr_model.doc_builder.resolve_blocks = True  # Group lines into blocks (paragraphs)
-        
+
         # Connect to a local LLM (e.g., via Ollama)
         self.llm_client = LLMApi(
             base_url="http://localhost:11434/v1",  # Ollama's default port
@@ -52,8 +54,17 @@ class RAGService:
         # Load sentence embedding model
         self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
+        if not os.path.exists(ACCESS_TABLE_PATH):
+            self.access_rights = {}
+            return
 
-    def add_doc(self, path, access_groups):
+        lock = FileLock(ACCESS_TABLE_PATH)
+        with lock:
+            with open(ACCESS_TABLE_PATH, "r") as f:
+                self.access_rights = json.load(f)
+        
+
+    def add_doc(self, path, access_groups, access_role):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -71,9 +82,22 @@ class RAGService:
 
         # Save the OCR extracted content in .txt file
         txt_path = path.replace('.pdf', '.txt')
-        with fsspec.open(txt_path, 'w') as f:
-            f.write(self.convert_doc_data_to_text(doc))
+
+        access_rights = self.access_rights.get(txt_path)
+        if access_rights != None and not access_role in access_rights:
+            return # INSUFFICIENT RIGHTS
+
+        lock = FileLock(txt_path)
+        with lock:
+            with open(txt_path, 'w') as f:
+                f.write(self.convert_doc_data_to_text(doc))
         
+        lock = FileLock(ACCESS_TABLE_PATH)
+        with lock:
+            with open(ACCESS_TABLE_PATH, 'w') as f:
+                self.access_rights[txt_path] = access_groups
+                json.dump(self.access_rights, f)
+
         for page in doc.pages:
             for block in page.blocks:
                 block_text = self.convert_block_data_to_text(block)
@@ -85,14 +109,57 @@ class RAGService:
                     embeddings=[block_embedding],
                     ids=[str(hash(str(block_embedding)))],
                     metadatas=[{
-                        'path': path,
-                        'page_num': page.page_idx + 1,
-                        'access_groups': json.dumps(access_groups)
+                        'txt_path': txt_path,
+                        'page_num': page.page_idx + 1
                     }]
                 )
 
         print(f'Successfully stored Document {path}')
         return txt_path
+    
+
+    # TEST THIS FUNCTION
+    def delete_doc(self, path, access_role):
+        txt_path = path.replace('.pdf', '.txt')
+        access_rights = self.access_rights.get(txt_path)
+        if access_rights != None and not access_role in access_rights:
+            return # INSUFFICIENT RIGHTS
+        
+        try:
+            # Delete file
+            os.remove(txt_path)
+        except FileNotFoundError:
+            print(f'No such file at {txt_path} found !')
+        except Exception as e:
+            print(f'Error {e}')
+            return
+        
+        # Delete from DB
+        self.collection.delete(where={'txt_path': txt_path})
+
+
+    # TEST THIS FUNCTION
+    def update_doc(self, access_role, path, new_path, new_access_groups):
+        txt_path = path.replace('.pdf', '.txt')
+        access_rights = self.access_rights.get(txt_path)
+        if access_rights != None and not access_role in access_rights:
+            return # INSUFFICIENT RIGHTS
+        
+        lock = FileLock(ACCESS_TABLE_PATH)
+        with lock:
+            with open(ACCESS_TABLE_PATH, 'w') as f:
+                self.access_rights[txt_path] = new_access_groups
+                json.dump(self.access_rights, f)
+        
+        # Find all entries that match the old path
+        doc_entries = self.collection.get(where={"txt_path": txt_path})
+
+        # Update each entry with the new path
+        for doc_id in doc_entries["ids"]:
+            self.collection.update(
+                ids=[doc_id],
+                metadata={"txt_path": new_path.replace('.pdf', '.txt')}
+            )
 
 
     def convert_block_data_to_text(self, block_data):
@@ -168,7 +235,7 @@ class RAGService:
         
         for path in unique_paths:
             # Read plain text content from converted .txt document
-            with fsspec.open(path.replace('.pdf', '.txt'), 'r') as f:
+            with open(path, 'r') as f:
                 documents_text.append(f.read())
     
         # Separate different documents with more spacing
@@ -193,12 +260,17 @@ class RAGService:
         summarized_docs = ''
         doc_sources_map = defaultdict(set)
         for doc_data in found_docs_data:
-            access_groups = json.loads(doc_data['access_groups'])
-            if access_role in access_groups:
-                doc_sources_map[doc_data['path']].add(doc_data['page_num'])
+            txt_path = doc_data['txt_path']
+
+            # Check if user has access to the document
+            access_groups = self.access_rights[txt_path]
+            if not access_role in access_groups:
+                continue
+            
+            doc_sources_map[txt_path].add(doc_data['page_num'])
 
             # Step 3: Extract and aggregate text from relevant documents
-            doc_text = self.gather_docs_knowledge([doc_data['path']])
+            doc_text = self.gather_docs_knowledge([txt_path])
             summarize_prompt = f'{question}\n\nSummarize all the relevant information and facts needed to answer the question in a manner from the following text:\n\n{doc_text}'
             doc_summary = self.llm_client.chat.completions.create(
                 model=LLM_MODEL,
@@ -221,9 +293,17 @@ class RAGService:
         # Step 5: Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
         for path, pages in doc_sources_map.items():
-            sources_info += f'{path} on pages {", ".join(map(str, sorted(pages)))}\n'
+            sources_info += f'{path.replace('.txt', '.pdf')} on pages {", ".join(map(str, sorted(pages)))}\n'
 
         # Strip out internal model markers like <think> tags
         answer_text = re.sub(r'<think>.*?</think>', '', response.choices[0].message.content, flags=re.DOTALL)
 
         return sources_info + answer_text
+    
+rag = RAGService()
+rag.add_doc('/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf', ['accounting', 'management'], 'test')
+# rag.add_doc('/home/lsw/Downloads/_ALL THESIS/_On the usefulness of context data.pdf', ['accounting', 'management'])
+rag.add_doc('/home/lsw/Downloads/AlexanderMeetingDiogines.pdf', ['accounting', 'management'], 'management')
+
+response = rag.query_llm('Did Charlemagne ever meet Alexander the Great ?', 'management')
+print(response)
