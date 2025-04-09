@@ -174,8 +174,8 @@ class RAGService:
             with lock:
                 # Remove old entry and add new one
                 if old_txt_path in self.access_rights:
-                    self.access_rights[new_txt_path] = new_access_groups
                     del self.access_rights[old_txt_path]
+                self.access_rights[new_txt_path] = new_access_groups
                 
                 with open(ACCESS_TABLE_PATH, 'w') as f:
                     json.dump(self.access_rights, f)
