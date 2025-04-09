@@ -4,6 +4,16 @@ RAG (Retrieval Augmented Generation) is an approach that combines a large langua
 
 ## Installation
 
+1. Install Docker
+
+2. Install Nvidia container toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+
+3. Download huggingface container:
+```bash
+sudo docker run --gpus all --shm-size 1g -p 8080:80 -v $PWD/data:/data ghcr.io/huggingface/text-generation-inference:latest --model-id deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
+```
+
+
 Use python 3.11.0 and CUDA 12.6 (I used NVIDIA GPU Driver Version: 560.35.03)
 Install the required packages by running:
 

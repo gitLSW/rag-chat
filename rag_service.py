@@ -8,12 +8,12 @@ from chromadb.utils import embedding_functions
 from openai import OpenAI as LLMApi  # Used to call local or remote large language models (LLMs)
 import re
 import os
+import asyncio
 from filelock import FileLock
-import json
 from api_responses import OKResponse
+from llm_service import LLMService
 
 # Configuration
-LLM_MODEL = 'deepseek-r1:32b'  # The specific LLM model used to answer questions
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
 TEXT_DETECTION_MODEL = 'fast_base'  # Model for detecting where text is on the page
 TEXT_RECOGNITION_MODEL = 'crnn_vgg16_bn'  # Model for recognizing characters within the detected text regions
@@ -45,6 +45,9 @@ class RAGService:
     # Load sentence embedding model
     embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
+    # Start LLMBatchProcessor
+    llm_service = LLMService()
+
     def __init__(self, collection):
         """
         Initializes the RAGService instance.
@@ -56,12 +59,6 @@ class RAGService:
         - Loads a sentence transformer for generating vector embeddings of text.
         """
         self.collection = RAGService.db_client.get_or_create_collection(name=collection)
-
-        # Connect to a local LLM (e.g., via Ollama)
-        self.llm_client = LLMApi(
-            base_url="http://localhost:11434/v1",  # Ollama's default port
-            api_key="ollama"
-        )
         
 
     def add_doc(self, path):
@@ -87,13 +84,13 @@ class RAGService:
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f:
-                f.write(self._convert_doc_data_to_text(doc))
+                f.write(RAGService._convert_doc_data_to_text(doc))
 
         for page in doc.pages:
             for block in page.blocks:
-                block_text = self._convert_block_data_to_text(block)
+                block_text = RAGService._convert_block_data_to_text(block)
                 # Convert paragraph into an embedding (vector representation)
-                block_embedding = self.embedding_model.encode(block_text).tolist()
+                block_embedding = RAGService.embedding_model.encode(block_text).tolist()
 
                 # Store the text and its embedding in the vector DB (ChromaDB)
                 self.collection.upsert(
@@ -161,16 +158,16 @@ class RAGService:
             list: Metadata entries (paths and pages) for the top matches.
         """
         # Convert user question into an embedding vector
-        question_embedding = self.embedding_model.encode(question).tolist()
+        question_embedding = RAGService.embedding_model.encode(question).tolist()
         # Perform semantic search in ChromaDB (based on embedding similarity between question and the paragraphs of all document)
         results = self.collection.query(query_embeddings=[question_embedding], n_results=n_results)
         
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         return nearest_neighbors
-        
 
-    def query_llm(self, question, docs_data):
+
+    async def query_llm(question, docs_data):
         """
         Answers a user question by retrieving relevant document content and querying a local LLM.
 
@@ -181,46 +178,44 @@ class RAGService:
         Returns:
             str: Final LLM-generated answer with source references.
         """
-        # Step 2: Group results by document and page
-        summarized_docs = ''
+        # Group relevant documents
+        summarize_tasks = []
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
             doc_path = doc_data['path']
             doc_sources_map[doc_path].add(doc_data['page_num'])
 
-            # Step 3: Extract and aggregate text from relevant documents
-            doc_text = self._gather_docs_knowledge([doc_path])
-            summarize_prompt = f'{question}\n\nSummarize all the relevant information and facts needed to answer the question in a manner from the following text:\n\n{doc_text}'
-            doc_summary = self.llm_client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[{"role": "user", "content": summarize_prompt}],
-                temperature=0.3
-            )
-            doc_summary = re.sub(r'<think>.*?</think>', '', doc_summary.choices[0].message.content, flags=re.DOTALL)
-            summarized_docs += f'{doc_summary}\n\n'
+            # Extract and aggregate text from relevant documents
+            doc_text = RAGService._gather_docs_knowledge([doc_path])
+            summarize_prompt = f'{question}\n\nSummarize all the relevant information and facts needed to answer the question from the following text:\n\n{doc_text}'
 
-        # Step 4: Build prompt and query the LLM
-        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n{summarized_docs}"
+            # Have the LLM summarize the
+            summarize_tasks.append(RAGService.llm_service.query_llm(summarize_prompt))
+        
+        summarized_docs = await asyncio.gather(*summarize_tasks)
+        print(summarized_docs)
 
-        # Send prompt to local LLM (e.g., Ollama)
-        response = self.llm_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
+        # Build prompt and query the LLM
+        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n"
+        for doc_summary in summarized_docs:
+            # Remove the <think> clause from each doc_summary and append into one big prompt
+            prompt += f'{re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)}\n\n'
 
-        # Step 5: Prepare final answer with source info
+        # Send prompt to local ollama LLM
+        final_answer = await RAGService.llm_service.query_llm(prompt)
+
+        # Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
         for path, pages in doc_sources_map.items():
             sources_info += f'{path}.pdf on pages {", ".join(map(str, sorted(pages)))}\n'
 
         # Strip out internal model markers like <think> tags
-        answer_text = re.sub(r'<think>.*?</think>', '', response.choices[0].message.content, flags=re.DOTALL)
+        answer_text = re.sub(r'<think>.*?</think>', '', final_answer, flags=re.DOTALL)
 
         return sources_info + answer_text
     
 
-    def _convert_block_data_to_text(self, block_data):
+    def _convert_block_data_to_text(block_data):
         lines = []
         for line in block_data.lines:
             # Join words with spaces and strip trailing whitespace
@@ -236,7 +231,7 @@ class RAGService:
         return " ".join(lines)
 
 
-    def _convert_doc_data_to_text(self, doc_data):
+    def _convert_doc_data_to_text(doc_data):
         """
         Converts an OCR document into plain text.
 
@@ -249,14 +244,14 @@ class RAGService:
         blocks = []
         for page in doc_data.pages:
             for block in page.blocks:
-                block_text = self._convert_block_data_to_text(block)
+                block_text = RAGService._convert_block_data_to_text(block)
                 blocks.append(block_text)
     
         # Separate text blocks within a document
         return "\n\n".join(blocks)
 
 
-    def _gather_docs_knowledge(self, doc_paths):
+    def _gather_docs_knowledge(doc_paths):
         """
         Extracts and combines text from the specified documents.
 
@@ -286,6 +281,11 @@ rag = RAGService('MyCompany')
 
 question = 'Did Charlemagne ever meet Alexander the Great ?'
 
-docs_data = rag.find_docs(question, 5)
-response = rag.query_llm(question, docs_data)
-print(response)
+relevant_docs_data = rag.find_docs(question, 5)
+
+async def main():
+    answer = await RAGService.query_llm(question=question, docs_data=relevant_docs_data)
+    print("\nAnswer:\n", answer)
+
+# Run the async function
+asyncio.run(main())
