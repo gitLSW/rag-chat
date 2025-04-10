@@ -8,7 +8,6 @@ from chromadb.utils import embedding_functions
 from openai import OpenAI as LLMApi  # Used to call local or remote large language models (LLMs)
 import re
 import os
-import asyncio
 from filelock import FileLock
 from api_responses import OKResponse
 from vllm_service import LLMService
@@ -34,6 +33,8 @@ class OCR:
     def read_pdf(self, pages):
         return self.ocr_model(pages)
 
+# Start LLMBatchProcessor
+llm_service = LLMService()
 
 class RAGService:
     # Initialize OCR
@@ -44,9 +45,6 @@ class RAGService:
 
     # Load sentence embedding model
     embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-
-    # Start LLMBatchProcessor
-    llm_service = LLMService()
 
     def __init__(self, collection):
         """
@@ -186,19 +184,20 @@ class RAGService:
 
             # Extract and aggregate text from relevant documents
             doc_text = RAGService._gather_docs_knowledge([doc_path])
-            summarize_prompts.append(f'{question}\n\nSummarize all the relevant information and facts needed to answer the question from the following text:\n\n{doc_text}')
+            summarize_prompts.append(f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}')
         
         # Have the LLM summarize the docs concurrently
-        doc_summaries = RAGService.llm_service.query_llm(summarize_prompts)
+        doc_summaries = llm_service.query(summarize_prompts)
 
         # Build the final prompt using the summaries and query the LLM
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n"
         for doc_summary in doc_summaries:
+            print(doc_summary)
             # Remove the <think> clause from each doc_summary and append into one big prompt
-            prompt += f'{re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)}\n\n'
+            prompt += re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL) + '\n\n'
 
         # Send prompt to local ollama LLM
-        final_answer = RAGService.llm_service.query_llm(prompt)
+        final_answer = llm_service.query([prompt])[0]
 
         # Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
@@ -269,19 +268,28 @@ class RAGService:
         # Separate different documents with more spacing
         return "\n\n\n\n\n\n\n\nNext Relevant Text:\n".join(documents_text)
 
-    
+
 rag = RAGService('MyCompany')
 # rag.add_doc('/home/lsw/Downloads/CHARLEMAGNE_AND_HARUN_AL-RASHID')
 # rag.add_doc('/home/lsw/Downloads/AlexanderMeetingDiogines')
 # rag.add_doc('/home/lsw/Downloads/_ALL THESIS/_On the usefulness of context data.pdf')
 
-question = 'Did Charlemagne ever meet Alexander the Great ?'
+def main1():
+    question = 'Did Charlemagne ever meet Alexander the Great ?'
+    relevant_docs_data = rag.find_docs(question, 5)
+    answer = RAGService.query_llm(question=question, docs_data=relevant_docs_data)
+    print("\nAnswer:\n", answer.data['llm_response'])
 
-relevant_docs_data = rag.find_docs(question, 5)
 
-async def main():
-    answer = await RAGService.query_llm(question=question, docs_data=relevant_docs_data)
-    print("\nAnswer:\n", answer)
+# def main2():
+#     question = 'What context data was used ?'
+#     relevant_docs_data = rag.find_docs(question, 5)
+#     answer = RAGService.query_llm(question=question, docs_data=relevant_docs_data)
+#     print("\nAnswer:\n", answer)
 
-# Run the async function
-asyncio.run(main())
+main1()
+
+# import asyncio
+# # Run the async function
+# asyncio.run(main1())
+# asyncio.run(main2())
