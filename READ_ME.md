@@ -8,7 +8,7 @@ RAG (Retrieval Augmented Generation) is an approach that combines a large langua
 
 2. Install Nvidia container toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 
-3. Select a llm model-id from huggingface. I used: https://huggingface.co/RedHatAI/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/commit/6e2aaab7812b2bf23c0705bc14463a535e49450c?utm_source=chatgpt.com, so my model-id is RedHatAI/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8
+3. Select a llm model-id from huggingface. I used: https://huggingface.co/RedHatAI/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/commit/6e2aaab7812b2bf23c0705bc14463a535e49450c?utm_source=chatgpt.com or https://huggingface.co/meituan/DeepSeek-R1-Channel-INT8
 
 4. Download huggingface container and model:
 ```bash

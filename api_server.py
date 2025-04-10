@@ -1,8 +1,10 @@
 import os
+import json
+from api_responses import ApiResponse, OKResponse
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from pydantic import BaseModel
 from typing import List, Optional
-from access_middleware import AccessMiddleware
+from company_middleware import CompanyMiddleware
 
 # -----------------------------
 # Request Models
@@ -43,18 +45,15 @@ class QueryLLMRequest(FindDocsRequest):
 # Helper to Init Company Server
 # -----------------------------
 
-access_mw_cache = {}
+company_mw_cache = {}
 def get_access_middleware(company_id):
-    try:
-        access_mw = access_mw_cache.get(company_id)
-        if access_mw is not None:
-            return access_mw
-        
-        access_mw = AccessMiddleware(company_id)
-        access_mw_cache[company_id] = access_mw
-        return access_mw
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not initialize company {company_id}: {e}")
+    company_mw = company_mw_cache.get(company_id)
+    if company_mw is not None:
+        return company_mw
+    
+    company_mw = CompanyMiddleware(company_id)
+    company_mw_cache[company_id] = company_mw
+    return company_mw
     
 
 
@@ -71,7 +70,7 @@ async def add_doc(req: AddDocRequest):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
     
     # Initialize the access middleware
-    access_mw = get_access_middleware(req.company_id)
+    company_mw = get_access_middleware(req.company_id)
     
     # Ensure the directory exists
     upload_dir = f'{req.company_id}/uploads'
@@ -85,37 +84,36 @@ async def add_doc(req: AddDocRequest):
         buffer.write(await req.file.read())
 
     # Add document logic
-    access_mw.add_doc(req.file_name, req.new_doc_access_groups, req.user_role)
+    res = company_mw.add_doc(req.file_name, req.new_doc_access_groups, req.user_role)
 
-    return {"message": "Document added successfully."}
+    if res.status_code == 200:
+        os.remove(file_path) # The pdf is no longer needed
 
 
 @app.post("/update_doc")
 def update_doc(req: UpdateDocRequest):
-    access_mw = get_access_middleware(req.company_id)
-    access_mw.update_doc(req.old_file_name, req.new_file_name, req.new_access_groups, req.user_role)
-    return {"message": "Document updated successfully."}
+    company_mw = get_access_middleware(req.company_id)
+    return company_mw.update_doc(req.old_file_name, req.new_file_name, req.new_access_groups, req.user_role)
 
 
 @app.post("/delete_doc")
 def delete_doc(req: DeleteDocRequest):
-    access_mw = get_access_middleware(req.company_id)
-    access_mw.delete_doc(req.file_name, req.user_role)
-    return {"message": "Document deleted successfully."}
+    company_mw = get_access_middleware(req.company_id)
+    return company_mw.delete_doc(req.file_name, req.user_role)
 
 
-@app.post("/find_docs")
-def find_docs(req: FindDocsRequest):
-    access_mw = get_access_middleware(req.company_id)
-    docs = access_mw.find_docs(req.question, req.user_role, req.n_results)
-    return {"docs": docs}
+# TODO: Gather docs for download (if not downlaoding from honesty system)
+# @app.post("/search_docs")
+# def search_docs(req: FindDocsRequest):
+#     company_mw = get_access_middleware(req.company_id)
+#     docs = company_mw.search_docs(req.question, req.user_role, req.n_results)
+#     return {"docs": docs}
 
 
 @app.post("/query_llm")
 def query_llm(req: QueryLLMRequest):
-    access_mw = get_access_middleware(req.company_id)
-    answer = access_mw.query_llm(req.question, req.user_role, req.n_results)
-    return {"answer": answer}
+    company_mw = get_access_middleware(req.company_id)
+    return company_mw.query_llm(req.question, req.user_role, req.n_results)
     
 # TODO: Handle non ApiErrors !!! 
 

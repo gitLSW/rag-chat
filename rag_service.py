@@ -11,7 +11,7 @@ import os
 import asyncio
 from filelock import FileLock
 from api_responses import OKResponse
-from llm_service import LLMService
+from vllm_service import LLMService
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -102,8 +102,7 @@ class RAGService:
                     }]
                 )
 
-        print(f'Successfully stored Document {path}')
-        return OKResponse(data=txt_path)
+        return OKResponse(detail=f'Successfully stored Document {path}', data=txt_path)
 
 
     # TEST THIS FUNCTION
@@ -130,7 +129,7 @@ class RAGService:
                 metadatas=[updated_metadata]
             )
 
-        return OKResponse(data=new_txt_path)
+        return OKResponse(detail=f'Successfully updated Document {new_path}', data=new_txt_path)
 
 
     # TEST THIS FUNCTION
@@ -143,7 +142,7 @@ class RAGService:
         # Delete from DB
         self.collection.delete(where={'path': path})
 
-        return OKResponse(data=txt_path)
+        return OKResponse(detail=f'Successfully deleted Document {path}', data=txt_path)
     
 
     def find_docs(self, question, n_results):
@@ -167,7 +166,7 @@ class RAGService:
         return nearest_neighbors
 
 
-    async def query_llm(question, docs_data):
+    def query_llm(question, docs_data):
         """
         Answers a user question by retrieving relevant document content and querying a local LLM.
 
@@ -178,8 +177,8 @@ class RAGService:
         Returns:
             str: Final LLM-generated answer with source references.
         """
-        # Group relevant documents
-        summarize_tasks = []
+        # Group relevant documents and collect prompts to summarize them
+        summarize_prompts = []
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
             doc_path = doc_data['path']
@@ -187,22 +186,19 @@ class RAGService:
 
             # Extract and aggregate text from relevant documents
             doc_text = RAGService._gather_docs_knowledge([doc_path])
-            summarize_prompt = f'{question}\n\nSummarize all the relevant information and facts needed to answer the question from the following text:\n\n{doc_text}'
-
-            # Have the LLM summarize the
-            summarize_tasks.append(RAGService.llm_service.query_llm(summarize_prompt))
+            summarize_prompts.append(f'{question}\n\nSummarize all the relevant information and facts needed to answer the question from the following text:\n\n{doc_text}')
         
-        summarized_docs = await asyncio.gather(*summarize_tasks)
-        print(summarized_docs)
+        # Have the LLM summarize the docs concurrently
+        doc_summaries = RAGService.llm_service.query_llm(summarize_prompts)
 
-        # Build prompt and query the LLM
+        # Build the final prompt using the summaries and query the LLM
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n"
-        for doc_summary in summarized_docs:
+        for doc_summary in doc_summaries:
             # Remove the <think> clause from each doc_summary and append into one big prompt
             prompt += f'{re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)}\n\n'
 
         # Send prompt to local ollama LLM
-        final_answer = await RAGService.llm_service.query_llm(prompt)
+        final_answer = RAGService.llm_service.query_llm(prompt)
 
         # Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
@@ -212,7 +208,7 @@ class RAGService:
         # Strip out internal model markers like <think> tags
         answer_text = re.sub(r'<think>.*?</think>', '', final_answer, flags=re.DOTALL)
 
-        return sources_info + answer_text
+        return OKResponse(data={ 'llm_response': sources_info + answer_text })
     
 
     def _convert_block_data_to_text(block_data):
