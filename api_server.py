@@ -1,5 +1,7 @@
 import os
 import json
+from mimetypes import guess_type
+from doc_extractor import DocExtractor
 from api_responses import ApiResponse, OKResponse
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from pydantic import BaseModel
@@ -65,9 +67,15 @@ app = FastAPI()
 
 @app.post("/add_doc")
 async def add_doc(req: AddDocRequest):
-    # Ensure the file is a PDF
-    if not req.file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
+    mime_type, _ = guess_type(req.file.filename)
+
+    # Check if MIME type is supported by DocExtractor
+    supported_mime_types = DocExtractor._get_handlers().keys()
+    if mime_type not in supported_mime_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}"
+        )
     
     # Initialize the access middleware
     company_mw = get_access_middleware(req.company_id)
@@ -87,7 +95,9 @@ async def add_doc(req: AddDocRequest):
     res = company_mw.add_doc(req.file_name, req.new_doc_access_groups, req.user_role)
 
     if res.status_code == 200:
-        os.remove(file_path) # The pdf is no longer needed
+        os.remove(file_path) # The original file is no longer needed
+
+    return res
 
 
 @app.post("/update_doc")
