@@ -9,23 +9,20 @@ class CompanyMiddleware:
         self.access_manger = AccessManager(company)
 
 
-    def add_doc(self, file_name, new_doc_access_groups, user_access_role):
-        path = self.access_manger.create_file_access(file_name, new_doc_access_groups, user_access_role).data
-        return self.rag_service.add_doc(path) # TODO: Check if this raises an exception, it should
+    def add_doc(self, path, access_groups, user_access_role):
+        file_name = self.access_manger.create_file_access(path, access_groups, user_access_role).data
+        return self.rag_service.add_doc(file_name) # TODO: Check if this raises an exception, it should
 
         
-    def update_doc(self, old_file_name, new_file_name, new_access_groups, user_access_role):
-        new_path = self.access_manger.update_file_access(old_file_name, new_file_name, new_access_groups, user_access_role)
-        
-        old_standard_name = old_file_name.split('.')[0]
-        old_path = f'./{self.company}/{old_standard_name}'
-        
-        return self.rag_service.update_doc(old_path, new_path) # TODO: Check if this raises an exception, it should
+    def update_doc(self, old_path, new_path, new_access_groups, user_access_role):
+        old_file_name = AccessManager._normalize_filename(old_path)
+        new_file_name = self.access_manger.update_file_access(old_path, new_path, new_access_groups, user_access_role).data
+        return self.rag_service.update_doc(old_file_name, new_file_name) # TODO: Check if this raises an exception, it should
         
     
-    def delete_doc(self, file_name, user_access_role):
-        path = self.access_manger.delete_file_access(file_name, user_access_role).data
-        return self.rag_service.delete_doc(path) # TODO: Check if this raises an exception, it should
+    def delete_doc(self, path, user_access_role):
+        file_name = self.access_manger.delete_file_access(path, user_access_role).data
+        return self.rag_service.delete_doc(file_name) # TODO: Check if this raises an exception, it should
 
 
     # def search_docs(self, question, user_access_role, n_results):

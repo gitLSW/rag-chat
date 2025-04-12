@@ -2,7 +2,6 @@ from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer
 
 LLM_MODEL = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'
-MAX_CONTEXT_TOKENS = 2048 - 2  # This is the model's context window, small models usually are capped low
 
 class LLMService:
     """
