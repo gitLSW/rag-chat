@@ -33,11 +33,10 @@ class AccessManager:
     # Creates or overrides file
     def create_file_access(self, file_name, new_access_groups, user_access_role):
         try:
+            # If the file already exists the user has no permission to override and a InsufficientAccessError gets raised
             standard_name = self.has_file_access(file_name, user_access_role).data
         except AccessNotFoundError as e:
             pass # Expected and correct behaviour
-        except InsufficientAccessError as e:
-            raise e # The file already exists and the user has no permission to override
 
         lock = FileLock(self.access_table_path)
         with lock:
@@ -50,11 +49,8 @@ class AccessManager:
 
     # Updates access
     def update_file_access(self, old_file_name, new_file_name, new_access_groups, user_access_role):
-        try:
-            old_standard_name = self.has_file_access(old_file_name, user_access_role).data
-        except Exception as e:
-            raise e # If the access is missing, the file should first be created
-        
+        # If the access is missing a error will be raised. The file should first be created.
+        old_standard_name = self.has_file_access(old_file_name, user_access_role).data
         new_standard_name = AccessManager._normalize_filename(old_standard_name)
 
         lock = FileLock(self.access_table_path)
@@ -68,11 +64,7 @@ class AccessManager:
     
     
     def delete_file_access(self, file_name, user_access_role):
-        try:
-            standard_name = self.has_file_access(file_name, user_access_role).data
-        except Exception as e:
-            raise e
-
+        standard_name = self.has_file_access(file_name, user_access_role).data
         lock = FileLock(self.access_table_path)
         with lock:
             with open(self.access_table_path, 'w') as f:
