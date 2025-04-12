@@ -1,8 +1,8 @@
 import os
-import json
+import uuid
 from mimetypes import guess_type
 from doc_extractor import DocExtractor
-from api_responses import ApiResponse, OKResponse
+from api_responses import *
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from pydantic import BaseModel
 from typing import List, Optional
@@ -18,28 +18,24 @@ class BaseCompanyRequest(BaseModel):
 
 
 class AddDocRequest(BaseCompanyRequest):
-    file_name: str
+    doc_id: str
     new_doc_access_groups: List[str]
     file: UploadFile = File(...)
 
 
 class UpdateDocRequest(BaseCompanyRequest):
-    old_file_name: str
-    new_file_name: str
+    old_doc_id: str
+    new_doc_id: str
     new_access_groups: List[str]
 
 
 class DeleteDocRequest(BaseCompanyRequest):
-    file_name: str
+    doc_id: str
 
 
-class FindDocsRequest(BaseCompanyRequest):
+class RAGRequest(BaseCompanyRequest):
     question: str
     n_results: int = 5
-
-
-class QueryLLMRequest(FindDocsRequest):
-    pass
 
 
 
@@ -48,7 +44,7 @@ class QueryLLMRequest(FindDocsRequest):
 # -----------------------------
 
 company_mw_cache = {}
-def get_access_middleware(company_id):
+def get_company_middleware(company_id):
     company_mw = company_mw_cache.get(company_id)
     if company_mw is not None:
         return company_mw
@@ -78,21 +74,21 @@ async def add_doc(req: AddDocRequest):
         )
     
     # Initialize the access middleware
-    company_mw = get_access_middleware(req.company_id)
+    company_mw = get_company_middleware(req.company_id)
     
     # Ensure the directory exists
     upload_dir = f'{req.company_id}/uploads'
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
-    file_path = os.path.join(upload_dir, req.file_name)
+    file_path = os.path.join(upload_dir, req.doc_id)
 
     # Save the file
     with open(file_path, "wb") as buffer:
         buffer.write(await req.file.read())
 
     # Add document logic
-    res = company_mw.add_doc(req.file_name, req.new_doc_access_groups, req.user_role)
+    res = company_mw.add_doc(req.doc_id, req.new_doc_access_groups, req.user_role)
 
     if res.status_code == 200:
         os.remove(file_path) # The original file is no longer needed
@@ -102,27 +98,26 @@ async def add_doc(req: AddDocRequest):
 
 @app.post("/update_doc")
 def update_doc(req: UpdateDocRequest):
-    company_mw = get_access_middleware(req.company_id)
-    return company_mw.update_doc(req.old_file_name, req.new_file_name, req.new_access_groups, req.user_role)
+    company_mw = get_company_middleware(req.company_id)
+    return company_mw.update_doc(req.old_doc_id, req.new_doc_id, req.new_access_groups, req.user_role)
 
 
 @app.post("/delete_doc")
 def delete_doc(req: DeleteDocRequest):
-    company_mw = get_access_middleware(req.company_id)
-    return company_mw.delete_doc(req.file_name, req.user_role)
+    company_mw = get_company_middleware(req.company_id)
+    return company_mw.delete_doc(req.doc_id, req.user_role)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
-# @app.post("/search_docs")
-# def search_docs(req: FindDocsRequest):
-#     company_mw = get_access_middleware(req.company_id)
-#     docs = company_mw.search_docs(req.question, req.user_role, req.n_results)
-#     return {"docs": docs}
+@app.post("/search_docs")
+def search_docs(req: RAGRequest):
+    company_mw = get_company_middleware(req.company_id)
+    return company_mw.search_docs(req.question, req.user_role, req.n_results)
 
 
 @app.post("/query_llm")
-def query_llm(req: QueryLLMRequest):
-    company_mw = get_access_middleware(req.company_id)
+def query_llm(req: RAGRequest):
+    company_mw = get_company_middleware(req.company_id)
     return company_mw.query_llm(req.question, req.user_role, req.n_results)
     
 # TODO: Handle non ApiErrors !!! 
@@ -131,4 +126,4 @@ def query_llm(req: QueryLLMRequest):
 import uvicorn
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="172.0.0.1", port=8000, reload=True)
+    uvicorn.run(app, host="172.0.0.1", port=7500, reload=True)

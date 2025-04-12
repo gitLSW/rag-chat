@@ -69,7 +69,7 @@ class RAGService:
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
                 metadatas=[{
-                    'doc_name': file_name,
+                    'doc_id': file_name,
                     'page_num': page_num
                 }]
             )
@@ -97,14 +97,14 @@ class RAGService:
         os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
         
         # Update ChromaDB metadata
-        doc_entries = self.collection.get(where={'doc_name': old_file_name})
+        doc_entries = self.collection.get(where={'doc_id': old_file_name})
         
         for doc_id in doc_entries["ids"]:
             # Preserve all existing metadata, only update the path
             current_metadata = self.collection.get(ids=[doc_id])["metadatas"][0]
             updated_metadata = {
                 **current_metadata,  # Keep all existing metadata
-                'doc_name': new_file_name  # Only update the path
+                'doc_id': new_file_name  # Only update the path
             }
             self.collection.update(
                 ids=[doc_id],
@@ -122,7 +122,7 @@ class RAGService:
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
         
         # Delete from DB
-        self.collection.delete(where={'doc_name': file_name})
+        self.collection.delete(where={'doc_id': file_name})
 
         return OKResponse(detail=f'Successfully deleted Document {txt_path}', data=txt_path)
     
@@ -163,7 +163,7 @@ class RAGService:
         summarize_prompts = []
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            doc_name = doc_data['doc_name']
+            doc_name = doc_data['doc_id']
             page_num = doc_data['page_num']
             if page_num is None:
                 doc_sources_map[doc_name] = None # Some docs have no pages

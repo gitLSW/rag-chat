@@ -1,6 +1,6 @@
 from rag_service import RAGService
 from access_manager import AccessManager
-from api_responses import AccessNotFoundError, InsufficientAccessError
+from api_responses import *
 
 
 class CompanyMiddleware:
@@ -25,9 +25,9 @@ class CompanyMiddleware:
         return self.rag_service.delete_doc(file_name) # TODO: Check if this raises an exception, it should
 
 
-    # def search_docs(self, question, user_access_role, n_results):
-    #     valid_docs_data = self._find_docs(question, user_access_role, n_results)
-    # TODO: Gather docs for download (if not downlaoding from honesty system)
+    def search_docs(self, question, user_access_role, n_results):
+        valid_docs_data = self._find_docs(question, user_access_role, n_results)
+        return OKResponse(data=valid_docs_data)
         
 
     def query_llm(self, question, user_access_role, n_results):
@@ -45,15 +45,9 @@ class CompanyMiddleware:
         valid_docs_data = []
         for doc_data in found_docs_data:
             try:
-                self.access_manger.has_file_access(doc_data['path'], user_access_role)
+                self.access_manger.has_file_access(doc_data['doc_id'], user_access_role)
             except InsufficientAccessError as e:
                 continue
-            except AccessNotFoundError as e:
-                print("ACCESS WASN'T FOUND FOR A FILE THAT SHOULD EXIST", e)
-                raise e # If the access wasn't found the data is corrupt, as doc_data comes from the DB
-            except e:
-                print("SHOULD NEVER OCCUR", e)
-                raise e
 
             valid_docs_data.append(doc_data)
 
