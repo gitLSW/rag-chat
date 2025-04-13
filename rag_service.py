@@ -81,7 +81,7 @@ class RAGService:
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
-                f.write(doc_text)
+                f.write(doc_text.rstrip())
 
         return OKResponse(detail=f'Successfully stored Document {txt_path}', data=txt_path)
 
