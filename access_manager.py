@@ -75,7 +75,7 @@ class AccessManager:
     
 
     def _get_company_path(self, path):
-        return get_relative_path(f"./{self.company_id}", path)
+        return get_relative_path(f"./{self.company_id}/docs", path)
 
 
 def get_relative_path(root, path):
