@@ -1,14 +1,13 @@
 from collections import defaultdict
 from sentence_transformers import SentenceTransformer  # Pretrained model to convert text into numerical vectors (embeddings)
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
-from chromadb.utils import embedding_functions
-from openai import OpenAI as LLMApi  # Used to call local or remote large language models (LLMs)
 import re
 import os
 from filelock import FileLock
 from api_responses import OKResponse
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
+from doc_path_classifier import DocPathClassifier
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -16,10 +15,9 @@ EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to genera
 # Start LLMBatchProcessor
 # llm_service = LLMService()
 
-class RAGService:
-    # Initialize the Doc Extractor
-    doc_extractor = DocExtractor()
+doc_extractor = DocExtractor()
 
+class RAGService:
     # Initialize persistent vector database (ChromaDB)
     db_client = chromadb.PersistentClient(path="chroma_db")
 
@@ -41,8 +39,13 @@ class RAGService:
         self.company = company
         self.collection = RAGService.db_client.get_or_create_collection(name=company) # TODO: Check if this raises an exception, it should
         
+    
+    # def add_file(self, source_path, dest_path):
+    #     paragraphs = DocExtractor().extract_paragraphs(source_path)
+    #     return self.add_doc(paragraphs, dest_path)
 
-    def add_doc(self, file_name):
+
+    def add_doc(self, paragraphs, path):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -56,9 +59,8 @@ class RAGService:
         """
 
         # Load and process PDF file using OCR
-        page_paragraphs = RAGService.doc_extractor.extract_paragraphs(f'./{self.company}/uploads/{file_name}')
         doc_text = ''
-        for page_num, paragraph in page_paragraphs:
+        for page_num, paragraph in paragraphs:
             doc_text += paragraph + '\n\n'
 
             # Convert paragraph into an embedding (vector representation)
@@ -69,13 +71,13 @@ class RAGService:
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
                 metadatas=[{
-                    'doc_id': file_name,
+                    'doc_path': path,
                     'page_num': page_num
                 }]
             )
 
-        # Save the OCR extracted content in .txt file
-        txt_path = f'./{self.company}/{file_name}.txt'
+        # Save the extracted content in .txt file
+        txt_path = path + '.txt'
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
@@ -85,10 +87,10 @@ class RAGService:
 
 
     # TEST THIS FUNCTION
-    def update_doc(self, old_file_name, new_file_name):
+    def update_doc(self, old_path, new_path):
         # Convert PDF paths to TXT paths
-        old_txt_path = f'./{self.company}/{old_file_name}.txt'
-        new_txt_path = f'./{self.company}/{new_file_name}.txt'
+        old_txt_path = old_path + '.txt'
+        new_txt_path = self.company + '.txt'
         
         if os.path.exists(new_txt_path):
             raise FileExistsError()
@@ -97,14 +99,14 @@ class RAGService:
         os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
         
         # Update ChromaDB metadata
-        doc_entries = self.collection.get(where={'doc_id': old_file_name})
+        doc_entries = self.collection.get(where={'doc_path': old_path})
         
         for doc_id in doc_entries["ids"]:
             # Preserve all existing metadata, only update the path
             current_metadata = self.collection.get(ids=[doc_id])["metadatas"][0]
             updated_metadata = {
                 **current_metadata,  # Keep all existing metadata
-                'doc_id': new_file_name  # Only update the path
+                'doc_path': new_path  # Only update the path
             }
             self.collection.update(
                 ids=[doc_id],
@@ -115,14 +117,14 @@ class RAGService:
 
 
     # TEST THIS FUNCTION
-    def delete_doc(self, file_name):
-        txt_path = f'./{self.company}/{file_name}.txt'
+    def delete_doc(self, path):
+        txt_path = path + '.txt'
         
         # Delete file
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
         
         # Delete from DB
-        self.collection.delete(where={'doc_id': file_name})
+        self.collection.delete(where={'doc_path': path})
 
         return OKResponse(detail=f'Successfully deleted Document {txt_path}', data=txt_path)
     
@@ -163,16 +165,16 @@ class RAGService:
         summarize_prompts = []
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            doc_name = doc_data['doc_id']
+            doc_path = doc_data['doc_path']
             page_num = doc_data['page_num']
             if page_num is None:
-                doc_sources_map[doc_name] = None # Some docs have no pages
+                doc_sources_map[doc_path] = None # Some docs have no pages
             else:   
-                doc_sources_map[doc_name].add(page_num)
+                doc_sources_map[doc_path].add(page_num)
 
             # Extract and aggregate text from relevant documents
-            doc_path = f'{self.company}/{doc_name}.txt'
-            doc_text = RAGService._gather_docs_knowledge([doc_path])
+            txt_path = doc_path + '.txt'
+            doc_text = RAGService._gather_docs_knowledge([txt_path])
             summarize_prompts.append(f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}')
         
         # Have the LLM summarize the docs concurrently
@@ -190,8 +192,8 @@ class RAGService:
 
         # Prepare final answer with source info
         sources_info = 'Consult these documents for more detail:\n'
-        for doc_name, pages in doc_sources_map.items():
-            sources_info += doc_name
+        for doc_path, pages in doc_sources_map.items():
+            sources_info += doc_path
             if pages is None:
                 sources_info += '\n'
             else:
@@ -228,8 +230,8 @@ class RAGService:
 
 
 rag = RAGService('MyCompany')
-# print(rag.add_doc('CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
-# print(rag.add_doc('AlexanderMeetingDiogines.pdf').detail)
+# print(rag.add_file('CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
+# print(rag.add_file('AlexanderMeetingDiogines.pdf').detail)
 # rag.add_doc('_On the usefulness of context data.pdf')
 
 def main1():

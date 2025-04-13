@@ -1,5 +1,6 @@
 import os
 import uuid
+from access_manager import get_relative_path
 from mimetypes import guess_type
 from doc_extractor import DocExtractor
 from api_responses import *
@@ -18,19 +19,19 @@ class BaseCompanyRequest(BaseModel):
 
 
 class AddDocRequest(BaseCompanyRequest):
-    doc_id: str
+    path: Optional[str]
     new_doc_access_groups: List[str]
     file: UploadFile = File(...)
 
 
 class UpdateDocRequest(BaseCompanyRequest):
-    old_doc_id: str
-    new_doc_id: str
+    old_path: str
+    new_path: str
     new_access_groups: List[str]
 
 
 class DeleteDocRequest(BaseCompanyRequest):
-    doc_id: str
+    path: str
 
 
 class RAGRequest(BaseCompanyRequest):
@@ -77,21 +78,21 @@ async def add_doc(req: AddDocRequest):
     company_mw = get_company_middleware(req.company_id)
     
     # Ensure the directory exists
-    upload_dir = f'{req.company_id}/uploads'
+    upload_dir = f'{req.company_id}/uploads/{uuid.uuid4()}'
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
-    file_path = os.path.join(upload_dir, req.doc_id)
+    source_path = get_relative_path(upload_dir, req.file.filename)
 
     # Save the file
-    with open(file_path, "wb") as buffer:
+    with open(source_path, "wb") as buffer:
         buffer.write(await req.file.read())
 
     # Add document logic
-    res = company_mw.add_doc(req.doc_id, req.new_doc_access_groups, req.user_role)
+    res = company_mw.add_doc(source_path, req.path, req.new_doc_access_groups, req.user_role)
 
     if res.status_code == 200:
-        os.remove(file_path) # The original file is no longer needed
+        os.remove(source_path) # The original file is no longer needed
 
     return res
 
@@ -99,13 +100,13 @@ async def add_doc(req: AddDocRequest):
 @app.post("/update_doc")
 def update_doc(req: UpdateDocRequest):
     company_mw = get_company_middleware(req.company_id)
-    return company_mw.update_doc(req.old_doc_id, req.new_doc_id, req.new_access_groups, req.user_role)
+    return company_mw.update_doc(req.old_path, req.new_path, req.new_access_groups, req.user_role)
 
 
 @app.post("/delete_doc")
 def delete_doc(req: DeleteDocRequest):
     company_mw = get_company_middleware(req.company_id)
-    return company_mw.delete_doc(req.doc_id, req.user_role)
+    return company_mw.delete_doc(req.path, req.user_role)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)

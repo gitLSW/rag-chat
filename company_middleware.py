@@ -1,28 +1,39 @@
 from rag_service import RAGService
 from access_manager import AccessManager
 from api_responses import *
+from doc_extractor import DocExtractor
+from doc_path_classifier import DocPathClassifier
 
+doc_extractor = DocExtractor()
 
 class CompanyMiddleware:
-    def __init__(self, company):
-        self.rag_service = RAGService(company)
-        self.access_manger = AccessManager(company)
+
+    def __init__(self, company_id):
+        self.rag_service = RAGService(company_id)
+        self.access_manger = AccessManager(company_id)
+        self.doc_path_classifier = DocPathClassifier(company_id)
 
 
-    def add_doc(self, path, access_groups, user_access_role):
-        file_name = self.access_manger.create_file_access(path, access_groups, user_access_role).data
-        return self.rag_service.add_doc(file_name) # TODO: Check if this raises an exception, it should
+    def add_doc(self, source_path, dest_path, access_groups, user_access_role):
+        if dest_path is None:
+            doc_paragraphs = doc_extractor.extract_paragraphs(source_path)
+            file_name = source_path.split('/')[-1] # Last element
+            dest_path = self.doc_path_classifier.classify_doc('\n\n'.join(doc_paragraphs)) + file_name
+        
+        path = self.access_manger.create_file_access(dest_path, access_groups, user_access_role).data
+        
+        return self.rag_service.add_doc(doc_paragraphs, path) # TODO: Check if this raises an exception, it should
 
         
     def update_doc(self, old_path, new_path, new_access_groups, user_access_role):
-        old_file_name = AccessManager._normalize_filename(old_path)
-        new_file_name = self.access_manger.update_file_access(old_path, new_path, new_access_groups, user_access_role).data
-        return self.rag_service.update_doc(old_file_name, new_file_name) # TODO: Check if this raises an exception, it should
+        old_path = self.access_manger._get_company_path(old_path)
+        new_path = self.access_manger.update_file_access(old_path, new_path, new_access_groups, user_access_role).data
+        return self.rag_service.update_doc(old_path, new_path) # TODO: Check if this raises an exception, it should
         
     
     def delete_doc(self, path, user_access_role):
-        file_name = self.access_manger.delete_file_access(path, user_access_role).data
-        return self.rag_service.delete_doc(file_name) # TODO: Check if this raises an exception, it should
+        path = self.access_manger.delete_file_access(path, user_access_role).data
+        return self.rag_service.delete_doc(path) # TODO: Check if this raises an exception, it should
 
 
     def search_docs(self, question, user_access_role, n_results):
@@ -45,7 +56,7 @@ class CompanyMiddleware:
         valid_docs_data = []
         for doc_data in found_docs_data:
             try:
-                self.access_manger.has_file_access(doc_data['doc_id'], user_access_role)
+                self.access_manger.has_file_access(doc_data['doc_path'], user_access_role)
             except InsufficientAccessError as e:
                 continue
 
