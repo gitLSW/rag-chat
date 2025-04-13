@@ -229,6 +229,11 @@ class RAGService:
         return "\n\n\n\n\n\n\n\nNext Relevant Text:\n".join(documents_text)
 
 
+    def _get_relative_path(path):
+        root_path = Path(f'./{self.company_id}/docs').resolve()
+        target_path = Path(path).resolve()
+        return str(target_path.relative_to(root_path))
+
 rag = RAGService('MyCompany')
 # print(rag.add_file('CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
 # print(rag.add_file('AlexanderMeetingDiogines.pdf').detail)
