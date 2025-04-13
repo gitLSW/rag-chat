@@ -15,8 +15,8 @@ class CompanyMiddleware:
 
 
     def add_doc(self, source_path, dest_path, access_groups, user_access_role):
+        doc_paragraphs = doc_extractor.extract_paragraphs(source_path)
         if dest_path is None:
-            doc_paragraphs = doc_extractor.extract_paragraphs(source_path)
             file_name = source_path.split('/')[-1] # Last element
             dest_path = self.doc_path_classifier.classify_doc('\n\n'.join(doc_paragraphs)) + file_name
         
