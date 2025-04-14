@@ -9,9 +9,9 @@ class PathNormalizer:
         return merge_path(f"./{self.company_id}/docs", path)
     
     def get_relative_comany_path(self, path):
-        target_path = merge_path(root, path)
-        root_path = Path(f'./{self.company_id}/docs').resolve()
-        return str(target_path.relative_to(root_path))
+        root = Path(f'./{self.company_id}/docs').resolve()
+        path = merge_path(root, path)
+        return str(path.relative_to(root))
 
 
 def merge_path(root, path):
