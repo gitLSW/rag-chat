@@ -1,6 +1,6 @@
 import os
 import uuid
-from access_manager import get_relative_path
+from path_normalizer import merge_path
 from mimetypes import guess_type
 from doc_extractor import DocExtractor
 from api_responses import *
@@ -82,7 +82,7 @@ async def add_doc(req: AddDocRequest):
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
-    source_path = get_relative_path(upload_dir, req.file.filename)
+    source_path = merge_path(upload_dir, req.file.filename)
 
     # Save the file
     with open(source_path, "wb") as buffer:

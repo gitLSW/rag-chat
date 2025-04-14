@@ -1,6 +1,6 @@
 import os
 import json
-from pathlib import Path
+from path_normalizer import PathNormalizer
 from filelock import FileLock
 from api_responses import * 
 
@@ -8,6 +8,8 @@ class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
         self.access_table_path = f'./{company_id}/access_table.json'
+        self.path_normalizer = PathNormalizer(company_id)
+
         if not os.path.exists(self.access_table_path):
             self.access_rights = {}
             return
@@ -19,7 +21,7 @@ class AccessManager:
 
 
     def has_file_access(self, path, user_access_role):
-        standard_path = self._get_company_path(path)
+        standard_path = self.path_normalizer.get_relative_comany_path(path)
         access_roles = self.access_rights.get(standard_path)
         if access_roles is None:
             raise AccessNotFoundError(file_path=standard_path)
@@ -51,7 +53,7 @@ class AccessManager:
     def update_file_access(self, old_path, new_path, new_access_groups, user_access_role):
         # If the access is missing a error will be raised. The file should first be created.
         old_standard_path = self.has_file_access(old_path, user_access_role).data
-        new_standard_path = self._get_company_path(new_path)
+        new_standard_path = self.path_normalizer.get_relative_comany_path(new_path)
 
         lock = FileLock(self.access_table_path)
         with lock:
@@ -72,28 +74,3 @@ class AccessManager:
                 json.dump(self.access_rights, f)
         
         return OKResponse(data=standard_path)
-    
-
-    def _get_company_path(self, path):
-        return get_relative_path(f"./{self.company_id}/docs", path)
-
-
-def get_relative_path(root, path):
-    # Forbid these characters in paths (strictest security)
-    BANNED_CHARS = {'\\', ':', '*', '?', '"', '<', '>', '|', '\0'}
-    
-    if any(char in path for char in BANNED_CHARS):
-        raise ValueError("Invalid path")
-    
-    root = Path(root).resolve()
-
-    path = Path(path)
-    file_name = path.stem.split('.')[0] + path.suffix  # remove extra extensions
-    path = path.with_name(file_name)
-    
-    full_path = (root / path).resolve(strict=False)
-    
-    if not str(full_path).startswith(str(root)):
-        raise ValueError("Path escapes root directory")
-    
-    return full_path

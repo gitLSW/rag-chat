@@ -8,6 +8,7 @@ from api_responses import OKResponse
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
+from path_normalizer import PathNormalizer
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -26,7 +27,7 @@ class RAGService:
     # Load sentence embedding model
     embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
-    def __init__(self, company):
+    def __init__(self, company_id):
         """
         Initializes the RAGService instance.
 
@@ -36,8 +37,10 @@ class RAGService:
         - Connects to a local LLM API (e.g., via Ollama).
         - Loads a sentence transformer for generating vector embeddings of text.
         """
-        self.company = company
-        self.collection = RAGService.db_client.get_or_create_collection(name=company) # TODO: Check if this raises an exception, it should
+        self.company = company_id
+        self.collection = RAGService.db_client.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
+        self.doc_path_classifier = DocPathClassifier(company_id)
+        self.path_normalizer = PathNormalizer(company_id)
         
     
     # def add_file(self, source_path, dest_path):
@@ -45,7 +48,7 @@ class RAGService:
     #     return self.add_doc(paragraphs, dest_path)
 
 
-    def add_doc(self, paragraphs, path):
+    def add_doc(self, source_path, dest_path):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -58,11 +61,17 @@ class RAGService:
             None
         """
 
-        # Load and process PDF file using OCR
-        doc_text = ''
-        for page_num, paragraph in paragraphs:
-            doc_text += paragraph + '\n\n'
+        paragraphs = doc_extractor.extract_paragraphs(source_path)
 
+        doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
+        
+        # Sort Document into path
+        if dest_path is None:
+            file_name = source_path.split('/')[-1] # Last element
+            dest_path = self.doc_path_classifier.classify_doc(doc_text) + file_name
+
+        # Load and process PDF file using OCR
+        for page_num, paragraph in paragraphs:
             # Convert paragraph into an embedding (vector representation)
             block_embedding = RAGService.embedding_model.encode(paragraph)
 
@@ -71,26 +80,26 @@ class RAGService:
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
                 metadatas=[{
-                    'doc_path': path,
+                    'doc_path': dest_path,
                     'page_num': page_num
                 }]
             )
 
         # Save the extracted content in .txt file
-        txt_path = path + '.txt'
+        txt_path = self.path_normalizer.get_full_company_path(dest_path) + '.txt'
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
-                f.write(doc_text.rstrip())
+                f.write(doc_text)
 
-        return OKResponse(detail=f'Successfully stored Document {txt_path}', data=txt_path)
+        return OKResponse(detail=f'Successfully stored Document {dest_path}', data=dest_path)
 
 
     # TEST THIS FUNCTION
     def update_doc(self, old_path, new_path):
         # Convert PDF paths to TXT paths
-        old_txt_path = old_path + '.txt'
-        new_txt_path = self.company + '.txt'
+        old_txt_path = self.path_normalizer.get_full_company_path(old_path) + '.txt'
+        new_txt_path = self.path_normalizer.get_full_company_path(new_path) + '.txt'
         
         if os.path.exists(new_txt_path):
             raise FileExistsError()
@@ -113,12 +122,12 @@ class RAGService:
                 metadatas=[updated_metadata]
             )
 
-        return OKResponse(detail=f'Successfully updated Document {new_txt_path}', data=new_txt_path)
+        return OKResponse(detail=f'Successfully updated Document {new_path}', data=new_path)
 
 
     # TEST THIS FUNCTION
     def delete_doc(self, path):
-        txt_path = path + '.txt'
+        txt_path = self.path_normalizer.get_full_company_path(path) + '.txt'
         
         # Delete file
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
@@ -126,7 +135,7 @@ class RAGService:
         # Delete from DB
         self.collection.delete(where={'doc_path': path})
 
-        return OKResponse(detail=f'Successfully deleted Document {txt_path}', data=txt_path)
+        return OKResponse(detail=f'Successfully deleted Document {path}', data=path)
     
 
     def find_docs(self, question, n_results):
@@ -165,15 +174,15 @@ class RAGService:
         summarize_prompts = []
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            doc_path = doc_data['doc_path']
+            rel_doc_path = doc_data['doc_path']
             page_num = doc_data['page_num']
             if page_num is None:
-                doc_sources_map[doc_path] = None # Some docs have no pages
+                doc_sources_map[rel_doc_path] = None # Some docs have no pages
             else:   
-                doc_sources_map[doc_path].add(page_num)
+                doc_sources_map[rel_doc_path].add(page_num)
 
             # Extract and aggregate text from relevant documents
-            txt_path = doc_path + '.txt'
+            txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
             doc_text = RAGService._gather_docs_knowledge([txt_path])
             summarize_prompts.append(f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}')
         
@@ -228,11 +237,6 @@ class RAGService:
         # Separate different documents with more spacing
         return "\n\n\n\n\n\n\n\nNext Relevant Text:\n".join(documents_text)
 
-
-    def _get_relative_path(path):
-        root_path = Path(f'./{self.company_id}/docs').resolve()
-        target_path = Path(path).resolve()
-        return str(target_path.relative_to(root_path))
 
 rag = RAGService('MyCompany')
 # print(rag.add_file('CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
