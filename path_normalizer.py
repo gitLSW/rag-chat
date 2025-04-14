@@ -23,13 +23,13 @@ def merge_path(root, path):
     
     root = Path(root).resolve()
 
-    path = Path(path)
+    path = Path(path.lstrip("/"))
     file_name = path.stem.split('.')[0] + path.suffix  # remove extra extensions
     path = path.with_name(file_name)
     
     full_path = (root / path).resolve(strict=False)
-    
+
     if not str(full_path).startswith(str(root)):
         raise ValueError("Path escapes root directory")
     
-    return full_path
+    return str(full_path)

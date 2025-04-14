@@ -117,9 +117,9 @@ def search_docs(req: RAGRequest):
 
 
 @app.post("/query_llm")
-def query_llm(req: RAGRequest):
+async def query_llm(req: RAGRequest):
     company_mw = get_company_middleware(req.company_id)
-    return company_mw.query_llm(req.question, req.user_role, req.search_depth)
+    return await company_mw.query_llm(req.question, req.user_role, req.search_depth)
     
 # TODO: Handle non ApiErrors !!! 
 

@@ -4,6 +4,8 @@ import chromadb  # A vector database for storing and retrieving paragraph embedd
 import re
 import os
 from filelock import FileLock
+import asyncio
+import aiofiles
 from api_responses import OKResponse
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
@@ -39,7 +41,7 @@ class RAGService:
         """
         self.company = company_id
         self.collection = RAGService.db_client.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
-        self.doc_path_classifier = DocPathClassifier(company_id)
+        # self.doc_path_classifier = DocPathClassifier(company_id)
         self.path_normalizer = PathNormalizer(company_id)
         
     
@@ -60,7 +62,6 @@ class RAGService:
         Returns:
             None
         """
-
         paragraphs = doc_extractor.extract_paragraphs(source_path)
 
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
@@ -157,49 +158,54 @@ class RAGService:
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         return nearest_neighbors
-
-
-    def query_llm(self, question, docs_data):
+    
+    
+    async def query_llm(self, question, docs_data):
         """
         Answers a user question by retrieving relevant document content and querying a local LLM.
 
         Args:
             question (str): The user's natural language question.
-            n_results (int): Number of document chunks to retrieve for context (default is 5).
 
         Returns:
             str: Final LLM-generated answer with source references.
         """
-        # Group relevant documents and collect prompts to summarize them
-        summarize_prompts = []
+        
+        async def load_and_summarize_doc(rel_doc_path):
+            txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
+            async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+                doc_text = await f.read()
+
+            summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
+            return await RAGService.llm_service.query(summarize_prompt)
+
+        # Read and summarize all docs concurrently
+        summarize_tasks = []
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
             rel_doc_path = doc_data['doc_path']
             page_num = doc_data['page_num']
+
             if page_num is None:
-                doc_sources_map[rel_doc_path] = None # Some docs have no pages
-            else:   
+                doc_sources_map[rel_doc_path] = None
+            else:
                 doc_sources_map[rel_doc_path].add(page_num)
+            
+            summarize_tasks.append(load_and_summarize_doc(rel_doc_path))
 
-            # Extract and aggregate text from relevant documents
-            txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
-            doc_text = RAGService._gather_docs_knowledge([txt_path])
-            summarize_prompts.append(f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}')
-        
-        # Have the LLM summarize the docs concurrently
-        doc_summaries = RAGService.llm_service.query(summarize_prompts)
+        # Run all LLM summaries concurrently via vLLM server
+        doc_summaries = await asyncio.gather(*summarize_tasks)
 
-        # Build the final prompt using the summaries and query the LLM
+        # Step 3: Create final prompt
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n"
         for doc_summary in doc_summaries:
-            print(doc_summary)
-            # Remove the <think> clause from each doc_summary and append into one big prompt
-            prompt += re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL) + '\n\n'
+            clean_summary = re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)
+            prompt += clean_summary + '\n\n'
 
-        # Send prompt to local ollama LLM
-        final_answer = RAGService.llm_service.query([prompt])[0]
+        # Step 4: Final prompt to answer the question (still single prompt)
+        final_answer = await RAGService.llm_service.query(prompt)
 
-        # Prepare final answer with source info
+        # Step 5: Compose source references
         sources_info = 'Consult these documents for more detail:\n'
         for doc_path, pages in doc_sources_map.items():
             sources_info += doc_path
@@ -208,46 +214,22 @@ class RAGService:
             else:
                 sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
 
-        # Strip out internal model markers like <think> tags
+        # Clean out any lingering <think> tags
         answer_text = re.sub(r'<think>.*?</think>', '', final_answer, flags=re.DOTALL)
 
         return OKResponse(data={ 'llm_response': sources_info + answer_text })
 
-
-    @staticmethod
-    def _gather_docs_knowledge(txt_paths):
-        """
-        Extracts and combines text from the specified documents.
-
-        Args:
-            doc_paths (iterable): Set of file paths to load and extract text from.
-
-        Returns:
-            str: Combined textual content from all provided documents, separated clearly.
-        """
-        # Load and extract clean text from multiple document paths
-        unique_paths = set(txt_paths)
-        documents_text = []
-        
-        for path in unique_paths:
-            # Read plain text content from converted .txt document
-            with open(path + '.txt', 'r') as f:
-                documents_text.append(f.read())
-    
-        # Separate different documents with more spacing
-        return "\n\n\n\n\n\n\n\nNext Relevant Text:\n".join(documents_text)
-
-
-rag = RAGService('MyCompany')
-# print(rag.add_file('CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
-# print(rag.add_file('AlexanderMeetingDiogines.pdf').detail)
+# company = 'MyCompany'
+# rag = RAGService(company)
+# print(rag.add_doc(f'./{company}/uploads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf', 'CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
+# print(rag.add_doc(f'./{company}/uploads/AlexanderMeetingDiogines.pdf', 'AlexanderMeetingDiogines.pdf').detail)
 # rag.add_doc('_On the usefulness of context data.pdf')
 
-def main1():
-    question = 'Did Charlemagne ever meet Alexander the Great ?'
-    relevant_docs_data = rag.find_docs(question, 5)
-    answer = rag.query_llm(question=question, docs_data=relevant_docs_data)
-    print("\nAnswer:\n", answer.data['llm_response'])
+# async def main1():
+#     question = 'Did Charlemagne ever meet Alexander the Great ?'
+#     relevant_docs_data = rag.find_docs(question, 5)
+#     answer = await rag.query_llm(question=question, docs_data=relevant_docs_data)
+#     print("\nAnswer:\n", answer.data['llm_response'])
 
 
 # def main2():
@@ -256,7 +238,7 @@ def main1():
 #     answer = RAGService.query_llm(question=question, docs_data=relevant_docs_data)
 #     print("\nAnswer:\n", answer)
 
-main1()
+# main1()
 
 # import asyncio
 # # Run the async function

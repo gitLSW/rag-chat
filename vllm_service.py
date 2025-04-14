@@ -1,7 +1,12 @@
+import json
+import asyncio
 from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer
+from openai import AsyncOpenAI
 
-LLM_MODEL = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'
+LLM_URL = 'http://0.0.0.0:6096'
+LLM_MODEL = 'MasterControlAIML/DeepSeek-R1-Qwen2.5-1.5b-SFT-R1-JSON-Unstructured-To-Structured' # 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'
+
 
 class LLMService:
     """
@@ -14,145 +19,149 @@ class LLMService:
         llm (LLM): The vLLM engine instance.
         sampling_config (Dict[str, Any]): A dictionary of sampling parameters.
     """
-    def __init__(self):
+    def __init__(self, vllm_url=LLM_URL):
         """
         Initializes the vLLM LLM instance.
         """
-        # TODO: SET FOR PROD
-        # Initialize the vLLM engine.
-        self.llm = LLM(
-            # Model parameters (https://docs.vllm.ai/en/latest/api/offline_inference/llm.html)
-            model=LLM_MODEL,  # Default model name or path
-                # tokenizer=None,  # Defaults to the model's tokenizer
-                # tokenizer_mode="auto",  # Automatically selects the tokenizer mode
-            trust_remote_code=True,  # Does not trust remote code execution by default
-                # download_dir=None,  # Uses the default download directory
-                # load_format="auto",  # Automatically detects the model's weight format
-                # dtype="auto",  # Determines the appropriate data type automatically
-            # quantization=None,  # No quantization method applied by default
-                # enforce_eager=False,  # Allows the use of CUDA graphs for execution
-                # max_seq_len_to_capture=8192,  # Maximum sequence length for CUDA graph capture
-                # seed=None,  # No specific random seed applied
-            gpu_memory_utilization=0.8,  # Utilizes up to % of GPU memory
-                # swap_space=4,  # Allocates 4 GiB of CPU memory per GPU for swap space
-                # cpu_offload_gb=0,  # No CPU offloading of model weights by default
-                # block_size=None,  # Uses the default block size
-                # disable_custom_all_reduce=False,  # Enables custom all-reduce operations
-                # disable_async_output_proc=False,  # Allows asynchronous output processing
-                # hf_overrides=None,  # No additional HuggingFace configuration overrides applied
-                # compilation_config=0,  # Default torch.compile optimization level
-
-            # Additional engine arguments (https://docs.vllm.ai/en/latest/serving/engine_args.html#engine-args)
-            task="generate",  # Automatically selects the task based on the model
-                # hf_config_path=None,  # Defaults to the model's configuration path
-                # skip_tokenizer_init=False,  # Initializes the tokenizer by default
-                # revision=None,  # Uses the default model version
-                # code_revision=None,  # Uses the default code revision
-                # tokenizer_revision=None,  # Uses the default tokenizer revision
-                # allowed_local_media_path=None,  # No local media paths allowed by default
-                # config_format="auto",  # Automatically detects the model's config format
-                # kv_cache_dtype="auto",  # Uses the model's data type for KV cache
-            # max_model_len=512,  # Automatically derived from the model config - default: None
-                # guided_decoding_backend="xgrammar",  # Default guided decoding backend
-                # logits_processor_pattern=None,  # No logits processor pattern specified
-                # model_impl="auto",  # Automatically selects the model implementation
-                # distributed_executor_backend=None,  # Defaults based on parallel sizes and GPU availability
-                # pipeline_parallel_size=1,  # Single pipeline stage
-            tensor_parallel_size=1,  # Split LLM Layer computations horizontally across N GPUs
-                # data_parallel_size=1,  # Single data parallel replica
-                # enable_expert_parallel=False,  # Expert parallelism disabled by default
-                # max_parallel_loading_workers=None,  # No specific limit on parallel loading workers
-                # ray_workers_use_nsight=False,  # Nsight profiling for Ray workers disabled
-                # enable_prefix_caching=False,  # Prefix caching disabled by default
-                # prefix_caching_hash_algo="builtin",  # Default hash algorithm for prefix caching
-                # disable_sliding_window=False,  # Sliding window enabled by default
-                # use_v2_block_manager=False,  # Deprecated; no effect on behavior
-                # num_lookahead_slots=0,  # No lookahead slots by default
-            # max_num_batched_tokens=256,  # No specific limit on batched tokens - default: None
-                # max_num_partial_prefills=1,  # Single partial prefill allowed
-                # max_long_partial_prefills=1,  # Single long partial prefill allowed
-                # long_prefill_token_threshold=0,  # No threshold for long prefill tokens
-            # max_num_seqs=4,  # No specific limit on sequences per iteration - default: None
-                # max_logprobs=20,  # Maximum number of log probabilities to return
-                # disable_log_stats=False,  # Logging statistics enabled by default
-                # rope_scaling=None,  # No RoPE scaling configuration specified
-                # rope_theta=None,  # No RoPE theta specified
-                # tokenizer_pool_size=0,  # Synchronous tokenization by default
-                # tokenizer_pool_type="ray",  # Default tokenizer pool type
-                # tokenizer_pool_extra_config=None,  # No extra config for tokenizer pool
-                # limit_mm_per_prompt=None,  # Defaults to 1 for each multimodal input
-                # mm_processor_kwargs=None,  # No overrides for multimodal processing
-                # disable_mm_preprocessor_cache=False,  # Multimodal preprocessor cache enabled
-                # enable_lora=False,  # LoRA adapters handling disabled by default
-                # enable_lora_bias=False,  # LoRA bias disabled by default
-                # max_loras=1,  # Maximum of 1 LoRA in a single batch
-                # max_lora_rank=16,  # Maximum LoRA rank
-                # lora_extra_vocab_size=256,  # Extra vocabulary size for LoRA adapters
-                # lora_dtype="auto",  # LoRA data type defaults to base model dtype
-                # long_lora_scaling_factors=None,  # No specific scaling factors for Long LoRA
-                # max_cpu_loras=None,  # No specific limit on CPU-stored LoRAs
-                # fully_sharded_loras=False,  # Partial sharding for LoRA computation
-                # enable_prompt_adapter=False,  # PromptAdapters handling disabled by default
-                # max_prompt_adapters=1,  # Maximum of 1 PromptAdapter in a batch
-                # max_prompt_adapter_token=0,  # No tokens allocated for PromptAdapters
-                # device="auto",  # Automatically selects the device for execution
-                # num_scheduler_steps=1,  # Single forward step per scheduler call
-                # use_tqdm_on_load=True,  # Progress bar enabled when loading model weights
-                # multi_step_stream_outputs=True,  # Streams outputs at the end of all steps
-                # scheduler_delay_factor=0.0,  # No delay applied before scheduling next prompt
-                # enable_chunked_prefill=False,  # Chunked prefill disabled by default
-                # speculative_config=None  # No configuration for speculative decoding
+        self.model = LLM_MODEL
+        self.client = AsyncOpenAI(  # Use async client
+            base_url=vllm_url.rstrip('/') + "/v1",
+            api_key="token-abc123"
         )
-        self.tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model)
 
 
-    def query(self, prompts):
+    async def query(self, prompt, sampling_params=None):
+        if sampling_params is None:
+            sampling_params = SamplingParams(
+                temperature=0.3,
+                top_p=0.6,
+                max_tokens=32,
+                stop=["\n\n", "\n", "Q:", "###"]
+            )
+
+        res = await self.client.completions.create(
+            model=self.model,
+            prompt=prompt,
+            temperature=sampling_params.temperature,
+            top_p=sampling_params.top_p,
+            max_tokens=sampling_params.max_tokens,
+            stop=sampling_params.stop
+        )
+        return res.choices[0].text
+    
+
+    async def extract_json(self, text, json_schema):
         """
-        Generates responses for a batch of prompts.
-
-        This method accepts a list of prompt strings and passes them as a batch to
-        the vLLM engine's generate() method. The engine processes all incoming prompts
-        from all threads concurrently using its internal intelligent batching mechanism.
+        Extracts a filled JSON object from LLM output based on a schema and checks if all fields are filled.
 
         Args:
-            prompts (List[str]): A list of prompt strings to process in parallel.
+            text (str): Input text to extract data from.
+            json_schema (dict): The target JSON schema structure.
 
         Returns:
-            List[str]: A list of generated response strings corresponding to each prompt.
+            tuple:
+                - dict: The parsed JSON object.
+                - bool: Whether all schema fields were filled.
         """
-        # Define decoding/generation parameters
         sampling_params = SamplingParams(
-            temperature=0.3,
-            top_p=0.6,
-            max_tokens=32,  # Controls how much *new* text to generate per prompt
-            stop=["\n\n", "\n", "Q:", "###"]
+            temperature=0.1,
+            top_p=0.9,
+            max_tokens=32
+            # stop=["\n\n", "\n", "Q:", "###"]
         )
 
-        print(prompts)
+        prompt = f"""This is a JSON Schema which you need to fill:
 
-        # Generate outputs for all prompts in the batch.
-        outputs = self.llm.generate(prompts, sampling_params)
+        {json.dumps(json_schema)}
 
-        # Extract the generated text from the output objects.
-        # Each output object typically contains the prompt and one or more outputs.
-        responses = [output.outputs[0].text for output in outputs]
-        return responses
+        ### TASK REQUIREMENT
+        You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
+        
+        {text}
+
+        ### STRICT RULES FOR GENERATING OUTPUT:
+        1. **NEVER THINK OUTSIDE THE THINK TAGS (=`<think>`)**  
+        - You are allowed to think and speak freely within your think tags (`<think>...</think>`), however ONCE YOU FINISHED THINKING (=`</think>`) YOU MUST ONLY WRITE THE FILLED JSON ANSWER
+        2. **JSON Schema Mapping:**  
+        - Strictly map the text data to the given JSON Schema without modification or omissions.
+        3. **Hierarchy Preservation:**  
+        - Maintain proper parent-child relationships and follow the schema's hierarchical structure.
+        4. **Correct Mapping of Attributes:**  
+        - Map all the relevant information you fiind to its appropriate keys
+        5. **JSON Format Compliance:**  
+        - Follow the JSON Format strictly !
+
+        ### IMPORTANT:
+        If any text behind `</think>` is not directly conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !"""
+
+        res = await self.query(prompt, sampling_params)
+
+        print('OUTPUT:', res)
+
+        # Split on </think> and grab everything after
+        try:
+            json_text = res.split("</think>", 1)[1].strip()
+            parsed_json = json.loads(json_text)
+        except (IndexError, json.JSONDecodeError) as e:
+            raise ValueError(f"Failed to extract or parse JSON from model response: {e}")
+
+        # Helper function to check if all schema keys are present and filled
+        def all_fields_filled(schema_part, json_part):
+            if isinstance(schema_part, dict):
+                for key, value in schema_part.items():
+                    if key not in json_part or json_part[key] in [None, "", []]:
+                        return False
+                    if isinstance(value, dict) and isinstance(json_part[key], dict):
+                        if not all_fields_filled(value, json_part[key]):
+                            return False
+            return True
+
+        is_complete = all_fields_filled(json_schema, parsed_json)
+
+        return parsed_json, is_complete
 
 
 
-# # List of sample prompts.
-# batch_prompts = [
-#     "Who was Caesar?",
-#     "Who was ALexander the Great?",
-#     "Which lands did Charlemagne own?",
-#     "Who defeated King Sigismund ?",
-# ]
 
-# # Initialize our batch query object.
-# llm_service = LLMService()
+# List of sample prompts.
+batch_prompts = [
+    "Who was Caesar?",
+    "Who was ALexander the Great?",
+    "Which lands did Charlemagne own?",
+    "Who defeated King Sigismund ?",
+]
 
-# # Query the model with the batch of prompts.
-# results = llm_service.query(batch_prompts)
+# Initialize our batch query object.
+llm_service = LLMService()
 
-# for prompt, output in zip(batch_prompts, results):
-#     print(f"Prompt: {prompt!r}\nGenerated text: {output!r}\n")
+async def test1(prompt):
+    results = await llm_service.query(batch_prompts[0])
+    print(f"Prompt: {prompt}\nGenerated text: {results}\n")
+
+# Query the model with the batch of prompts.
+# for prompt in batch_prompts:
+#     asyncio.run(test1(prompt))
+
+from doc_extractor import DocExtractor
+doc_extractor = DocExtractor()
+async def test2(path, json_schema):
+    text = doc_extractor.extract_text(path)
+    result = await llm_service.extract_json(text, json_schema)
+    print(result)
+
+json_schema = json.dumps({
+"invoice_id": "str",
+"customer_name": "str",
+"customer_address": "str",
+"vendor_name": "str",
+"vendor_address": "str",
+"vendor_email": "str",
+"vendor_phone_num": "str",
+"total_cost": "float",
+"vat": "float"
+})
+
+print(json_schema)
+
+asyncio.run(test2('/home/lsw/Desktop/invoice.pdf', json_schema))
