@@ -1,8 +1,10 @@
 from collections import defaultdict
-from sentence_transformers import SentenceTransformer  # Pretrained model to convert text into numerical vectors (embeddings)
+from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 import re
 import os
+import json
+from pymongo import MongoClient
 from filelock import FileLock
 import asyncio
 import aiofiles
@@ -11,6 +13,7 @@ from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
 from path_normalizer import PathNormalizer
+from vllm import SamplingParams
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -22,7 +25,7 @@ doc_extractor = DocExtractor()
 
 class RAGService:
     # Initialize persistent vector database (ChromaDB)
-    db_client = chromadb.PersistentClient(path="chroma_db")
+    vector_db = chromadb.PersistentClient(path="chroma_db")
 
     llm_service = LLMService()
 
@@ -40,9 +43,15 @@ class RAGService:
         - Loads a sentence transformer for generating vector embeddings of text.
         """
         self.company = company_id
-        self.collection = RAGService.db_client.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
+        self.collection = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         # self.doc_path_classifier = DocPathClassifier(company_id)
         self.path_normalizer = PathNormalizer(company_id)
+
+        client = MongoClient("mongodb://localhost:27017/")
+
+        # 📁 Create or connect to database
+        self.json_db = client[company_id]
+
         
     
     # def add_file(self, source_path, dest_path):
@@ -50,7 +59,7 @@ class RAGService:
     #     return self.add_doc(paragraphs, dest_path)
 
 
-    def add_doc(self, source_path, dest_path):
+    def add_doc(self, source_path, dest_path=None, json_schema=None, doc_type_colection=None):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -93,7 +102,14 @@ class RAGService:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(doc_text)
 
-        return OKResponse(detail=f'Successfully stored Document {dest_path}', data=dest_path)
+        filled_json, doc_type_colection, is_json_complete = self.extract_json(doc_text, json_schema)
+        self.json_db[doc_type_colection].insert_one(filled_json)
+
+        return OKResponse(detail=f'Successfully processed Document', data={
+            'doc_path': dest_path,
+            'extracted_json': filled_json,
+            'is_json_extract_complete': is_json_complete
+        })
 
 
     # TEST THIS FUNCTION
@@ -218,6 +234,148 @@ class RAGService:
         answer_text = re.sub(r'<think>.*?</think>', '', final_answer, flags=re.DOTALL)
 
         return OKResponse(data={ 'llm_response': sources_info + answer_text })
+    
+
+    async def extract_json(self, text, json_schema=None):
+        """
+        Extracts a filled JSON object from LLM output based on a schema and checks if all fields are filled.
+
+        Args:
+            text (str): Input text to extract data from.
+            json_schema (dict): The target JSON schema structure.
+
+        Returns:
+            tuple:
+                - dict: The parsed JSON object.
+                - bool: Whether all schema fields were filled.
+        """
+        
+        if json_schema is None:
+            json_schema, doc_type_colection = RAGService.identify_doc_json(text)
+        else:
+            _, doc_type_colection = RAGService.identify_doc_json(text)
+
+        sampling_params = SamplingParams(
+            temperature=0.1,
+            top_p=0.4,
+            max_tokens=4096
+            # stop=["\n\n", "\n", "Q:", "###"]
+        )
+
+        prompt = f"""This is a JSON Schema which you need to fill:
+
+            {json.dumps(json_schema)}
+
+            ### TASK REQUIREMENT
+            You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
+            
+            {text}
+
+            ### STRICT RULES FOR GENERATING OUTPUT:
+            **ALWAYS PROVIDE YOUR FINAL ANSWER**:
+            - Always provide the filled JSON
+            **JSON Schema Mapping:**:
+            - Carefully check to find ALL relevant information in the text like ids, names, addresses, etc.
+            - Sometimes ids my be called numbers
+            - Strictly map the data you found to the given JSON Schema without modification or omissions.
+            **Hierarchy Preservation:**:
+            - Maintain proper parent-child relationships and follow the schema's hierarchical structure.
+            **Correct Mapping of Attributes:**:
+            - Map all the relevant information you find to its appropriate keys
+            **JSON Format Compliance:**:
+            - In your answer follow the JSON Format strictly !
+            - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
+            
+            Write your reasoning below here inside think tags and once you are done thinking, provide your answer in the described format !"""
+
+        res = await RAGService.llm_service.query(prompt, sampling_params)
+
+        try:
+            answer_json = re.search(r"```json\s*(.*?)\s*```", res, re.DOTALL).group(1)
+            parsed_json = json.loads(answer_json)
+        except (IndexError, json.JSONDecodeError) as e:
+            raise ValueError(f"Failed to extract or parse JSON from model response: {e}")
+
+        # Helper function to check if all schema keys are present and filled
+        def all_fields_filled(schema_part, json_part):
+            if isinstance(schema_part, dict):
+                for key, value in schema_part.items():
+                    if key not in json_part or json_part[key] in [None, "", []]:
+                        return False
+                    if isinstance(value, dict) and isinstance(json_part[key], dict):
+                        if not all_fields_filled(value, json_part[key]):
+                            return False
+            return True
+
+        is_complete = all_fields_filled(json_schema, parsed_json)
+
+        return parsed_json, doc_type_colection, is_complete
+    
+
+    @staticmethod
+    def identify_doc_json(content):
+        text_embedding = RAGService.embedding_model.encode(content)
+
+        invoice_schema = {
+            "invoiceNumber": "string",
+            "invoiceDate": "string (ISO 8601 date)",
+            "dueDate": "string (ISO 8601 date)",
+            "supplierName": "string",
+            "supplierAddress": "string",
+            "supplierTaxID": "string",
+            "customerName": "string",
+            "customerAddress": "string",
+            "customerTaxID": "string",
+            "lineItems": [
+                {
+                "description": "string",
+                "quantity": "number",
+                "unitPrice": "number",
+                "totalPrice": "number"
+                }
+            ],
+            "subtotal": "number",
+            "tax": "number",
+            "totalAmount": "number",
+            "currency": "string"
+        }
+        invoice_json_embedding = RAGService.embedding_model.encode(json.dumps(invoice_schema))
+
+        delivery_note_schema = {
+            "deliveryNoteNumber": "string",
+            "deliveryDate": "string (ISO 8601 date)",
+            "supplierName": "string",
+            "supplierAddress": "string",
+            "customerName": "string",
+            "customerAddress": "string",
+            "deliveryAddress": "string",
+            "itemsDelivered": [
+                {
+                "description": "string",
+                "quantity": "number",
+                "unitOfMeasure": "string",
+                "batchNumber": "string"
+                }
+            ],
+            "deliveryMethod": "string",
+            "vehicleNumber": "string",
+            "receiverName": "string",
+            "receiverSignature": "string (optional, can be a path to an image or note about presence)"
+        }
+        delivery_note_json_embedding = RAGService.embedding_model.encode(json.dumps(delivery_note_schema))
+
+        invoice_similarity_score = util.pytorch_cos_sim(text_embedding, invoice_json_embedding).item()
+        delivery_note_similarity_score = util.pytorch_cos_sim(text_embedding, delivery_note_json_embedding).item()
+
+        print('FIND A THRESHHOLD OF RETURN NONE AND RETURN NONE')
+        print('invoice_similarity_score:', invoice_similarity_score)
+        print('delivery_note_similarity_score:', delivery_note_similarity_score)
+
+        if delivery_note_similarity_score < invoice_similarity_score:
+            return invoice_schema, 'invoice'
+        else:
+            return delivery_note_schema, 'delivery_note'
+
 
 # company = 'MyCompany'
 # rag = RAGService(company)
