@@ -14,6 +14,7 @@ from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
 from path_normalizer import PathNormalizer
 from vllm import SamplingParams
+import jsonschema
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -43,23 +44,36 @@ class RAGService:
         - Loads a sentence transformer for generating vector embeddings of text.
         """
         self.company = company_id
-        self.collection = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
+        self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         # self.doc_path_classifier = DocPathClassifier(company_id)
         self.path_normalizer = PathNormalizer(company_id)
 
+        self.schemata_path = f'./{company_id}/doc_schemata.json'
+        with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
+            self.doc_schemata = json.loads(f.read())
+
         client = MongoClient("mongodb://localhost:27017/")
 
-        # 📁 Create or connect to database
+        # Create or connect to database
         self.json_db = client[company_id]
 
+
+    def add_json_schema_type(self, json_schema, new_doc_type):
+        if new_doc_type in self.doc_schemata.keys():
+            raise ValueError(f'The document type {new_doc_type}, is already used by another JSON schema')
+
+        jsonschema.Draft7Validator.check_schema(json_schema) # will raise jsonschema.exceptions.SchemaError if invalid
         
-    
-    # def add_file(self, source_path, dest_path):
-    #     paragraphs = DocExtractor().extract_paragraphs(source_path)
-    #     return self.add_doc(paragraphs, dest_path)
+        lock = FileLock(self.schemata_path)
+        with lock:
+            self.doc_schemata[new_doc_type] = json_schema
+            with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
+                f.write(json.dumps(self.doc_schemata))
+        
+        return OKResponse(f'Successfully added new JSON schema for {new_doc_type}')
 
 
-    def add_doc(self, source_path, dest_path=None, json_schema=None, doc_type_colection=None):
+    def add_doc(self, source_path, access_groups, dest_path=None, doc_type=None):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -80,18 +94,31 @@ class RAGService:
             file_name = source_path.split('/')[-1] # Last element
             dest_path = self.doc_path_classifier.classify_doc(doc_text) + file_name
 
+        # Extract JSON and create or overwrite in DB
+        doc_json_collection = self.json_db[doc_type]
+        filled_json, doc_type, is_json_complete = self.extract_json(doc_text, doc_type)        
+        if doc_type and is_json_complete:
+            doc_json_collection.replace_one({ '_id': dest_path }, {
+                    'doc_path': dest_path,
+                    'access_groups': access_groups,
+                    **filled_json
+                }, upsert=True)
+        else: # or delete a doc if it was overwritten with a new doc from which no data was extracted
+            doc_json_collection.delete_one({ '_id': dest_path })
+
         # Load and process PDF file using OCR
         for page_num, paragraph in paragraphs:
             # Convert paragraph into an embedding (vector representation)
             block_embedding = RAGService.embedding_model.encode(paragraph)
 
             # Store the text and its embedding in the vector DB (ChromaDB)
-            self.collection.upsert(
+            self.vector_db.upsert(
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
                 metadatas=[{
                     'doc_path': dest_path,
-                    'page_num': page_num
+                    'page_num': page_num,
+                    'doc_type': doc_type
                 }]
             )
 
@@ -102,9 +129,6 @@ class RAGService:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(doc_text)
 
-        filled_json, doc_type_colection, is_json_complete = self.extract_json(doc_text, json_schema)
-        self.json_db[doc_type_colection].insert_one(filled_json)
-
         return OKResponse(detail=f'Successfully processed Document', data={
             'doc_path': dest_path,
             'extracted_json': filled_json,
@@ -113,7 +137,7 @@ class RAGService:
 
 
     # TEST THIS FUNCTION
-    def update_doc(self, old_path, new_path):
+    def update_doc(self, old_path, new_path, new_json, new_access_groups):
         # Convert PDF paths to TXT paths
         old_txt_path = self.path_normalizer.get_full_company_path(old_path) + '.txt'
         new_txt_path = self.path_normalizer.get_full_company_path(new_path) + '.txt'
@@ -125,19 +149,34 @@ class RAGService:
         os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
         
         # Update ChromaDB metadata
-        doc_entries = self.collection.get(where={'doc_path': old_path})
+        doc_entries = self.vector_db.get(where={'doc_path': old_path})
         
         for doc_id in doc_entries["ids"]:
             # Preserve all existing metadata, only update the path
-            current_metadata = self.collection.get(ids=[doc_id])["metadatas"][0]
+            current_metadata = self.vector_db.get(ids=[doc_id])["metadatas"][0]
             updated_metadata = {
                 **current_metadata,  # Keep all existing metadata
                 'doc_path': new_path  # Only update the path
             }
-            self.collection.update(
+            self.vector_db.update(
                 ids=[doc_id],
                 metadatas=[updated_metadata]
             )
+
+        for collection_name in self.json_db.list_collection_names():
+            collection = self.json_db[collection_name]
+            old_doc = collection.find_one({ '_id': old_path })
+            if old_doc is None:
+                continue
+            updated_doc = {
+                    'doc_path': new_path,
+                    'access_groups': new_access_groups,
+                    **old_doc,
+                    **new_json
+                }
+            jsonschema.validate(updated_doc, self.doc_schemata[collection])
+            collection.insert_one({ '_id': new_path }, updated_doc) # Will raise a DuplicateKey error if already existant
+            collection.delete_one({ '_id': old_path })
 
         return OKResponse(detail=f'Successfully updated Document {new_path}', data=new_path)
 
@@ -149,8 +188,12 @@ class RAGService:
         # Delete file
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
         
-        # Delete from DB
-        self.collection.delete(where={'doc_path': path})
+        # Delete from json DB
+        for collection_name in self.json_db.list_collection_names():
+            self.json_db[collection_name].delete_one({ '_id': path })
+
+        # Delete from ector DB
+        self.vector_db.delete(where={'doc_path': path})
 
         return OKResponse(detail=f'Successfully deleted Document {path}', data=path)
     
@@ -169,12 +212,12 @@ class RAGService:
         # Convert user question into an embedding vector
         question_embedding = RAGService.embedding_model.encode(question).tolist()
         # Perform semantic search in ChromaDB (based on embedding similarity between question and the paragraphs of all document)
-        results = self.collection.query(query_embeddings=[question_embedding], n_results=n_results)
+        results = self.vector_db.query(query_embeddings=[question_embedding], n_results=n_results)
         
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         return nearest_neighbors
-    
+
     
     async def query_llm(self, question, docs_data):
         """
@@ -186,37 +229,37 @@ class RAGService:
         Returns:
             str: Final LLM-generated answer with source references.
         """
-        
-        async def load_and_summarize_doc(rel_doc_path):
-            txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
-            async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-                doc_text = await f.read()
-
-            summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
-            return await RAGService.llm_service.query(summarize_prompt)
-
         # Read and summarize all docs concurrently
         summarize_tasks = []
+        doc_types = set()
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
             rel_doc_path = doc_data['doc_path']
             page_num = doc_data['page_num']
+            doc_types.add(doc_data['doc_type'])
 
             if page_num is None:
                 doc_sources_map[rel_doc_path] = None
             else:
                 doc_sources_map[rel_doc_path].add(page_num)
             
-            summarize_tasks.append(load_and_summarize_doc(rel_doc_path))
+            summarize_tasks.append(self._load_and_summarize_doc(rel_doc_path))
 
         # Run all LLM summaries concurrently via vLLM server
         doc_summaries = await asyncio.gather(*summarize_tasks)
 
         # Step 3: Create final prompt
-        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n\n\n"
+        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n"
         for doc_summary in doc_summaries:
             clean_summary = re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)
-            prompt += clean_summary + '\n\n'
+            prompt += '\n\n' + clean_summary
+
+        prompt += '\n\n\nYou may also optionally use mongosh to query the database about the documents in question. These are the JSON schemata for each MongoDB collection:'
+
+        for doc_type in doc_types:
+            prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
+        
+        prompt += '\n\nIf you want to query the MongoDB, write them in tags like so: ```mongosh YOUR COMMANDS ```'
 
         # Step 4: Final prompt to answer the question (still single prompt)
         final_answer = await RAGService.llm_service.query(prompt)
@@ -236,7 +279,16 @@ class RAGService:
         return OKResponse(data={ 'llm_response': sources_info + answer_text })
     
 
-    async def extract_json(self, text, json_schema=None):
+    async def _load_and_summarize_doc(self, rel_doc_path):
+        txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
+        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+            doc_text = await f.read()
+
+        summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
+        return await RAGService.llm_service.query(summarize_prompt)
+    
+
+    async def extract_json(self, text, doc_type=None):
         """
         Extracts a filled JSON object from LLM output based on a schema and checks if all fields are filled.
 
@@ -249,11 +301,13 @@ class RAGService:
                 - dict: The parsed JSON object.
                 - bool: Whether all schema fields were filled.
         """
-        
-        if json_schema is None:
-            json_schema, doc_type_colection = RAGService.identify_doc_json(text)
+        if doc_type is None:
+            json_schema, doc_type = RAGService.identify_doc_json(text)
         else:
-            _, doc_type_colection = RAGService.identify_doc_json(text)
+            json_schema = self.doc_schemata[doc_type] # raises Error if doc_type is invalid
+
+        if doc_type is None:
+            return None, None, False
 
         sampling_params = SamplingParams(
             temperature=0.1,
@@ -293,88 +347,60 @@ class RAGService:
         try:
             answer_json = re.search(r"```json\s*(.*?)\s*```", res, re.DOTALL).group(1)
             parsed_json = json.loads(answer_json)
+            jsonschema.validate(parsed_json, json_schema)
+            return parsed_json, doc_type, True
+        except jsonschema.exceptions.ValidationError as e:
+            return parsed_json, doc_type, False
         except (IndexError, json.JSONDecodeError) as e:
-            raise ValueError(f"Failed to extract or parse JSON from model response: {e}")
-
-        # Helper function to check if all schema keys are present and filled
-        def all_fields_filled(schema_part, json_part):
-            if isinstance(schema_part, dict):
-                for key, value in schema_part.items():
-                    if key not in json_part or json_part[key] in [None, "", []]:
-                        return False
-                    if isinstance(value, dict) and isinstance(json_part[key], dict):
-                        if not all_fields_filled(value, json_part[key]):
-                            return False
-            return True
-
-        is_complete = all_fields_filled(json_schema, parsed_json)
-
-        return parsed_json, doc_type_colection, is_complete
+            print(f"Failed to extract or parse JSON from model response: {e}")
+            return None, doc_type, False
     
 
     @staticmethod
-    def identify_doc_json(content):
-        text_embedding = RAGService.embedding_model.encode(content)
+    def identify_doc_json(self, paragraphs):
+        from collections import defaultdict
 
-        invoice_schema = {
-            "invoiceNumber": "string",
-            "invoiceDate": "string (ISO 8601 date)",
-            "dueDate": "string (ISO 8601 date)",
-            "supplierName": "string",
-            "supplierAddress": "string",
-            "supplierTaxID": "string",
-            "customerName": "string",
-            "customerAddress": "string",
-            "customerTaxID": "string",
-            "lineItems": [
-                {
-                "description": "string",
-                "quantity": "number",
-                "unitPrice": "number",
-                "totalPrice": "number"
-                }
-            ],
-            "subtotal": "number",
-            "tax": "number",
-            "totalAmount": "number",
-            "currency": "string"
+        # Precompute schema embeddings
+        schema_embeddings = {
+            doc_type: RAGService.embedding_model.encode(json.dumps(schema))
+            for doc_type, schema in self.doc_schemata.items()
         }
-        invoice_json_embedding = RAGService.embedding_model.encode(json.dumps(invoice_schema))
 
-        delivery_note_schema = {
-            "deliveryNoteNumber": "string",
-            "deliveryDate": "string (ISO 8601 date)",
-            "supplierName": "string",
-            "supplierAddress": "string",
-            "customerName": "string",
-            "customerAddress": "string",
-            "deliveryAddress": "string",
-            "itemsDelivered": [
-                {
-                "description": "string",
-                "quantity": "number",
-                "unitOfMeasure": "string",
-                "batchNumber": "string"
-                }
-            ],
-            "deliveryMethod": "string",
-            "vehicleNumber": "string",
-            "receiverName": "string",
-            "receiverSignature": "string (optional, can be a path to an image or note about presence)"
+        vote_counts = defaultdict(int)
+        valid_vote_count = 0
+
+        for paragraph in paragraphs:
+            text_embedding = RAGService.embedding_model.encode(paragraph)
+
+            # Compare paragraph to all schema embeddings
+            similarity_scores = {
+                doc_type: util.pytorch_cos_sim(text_embedding, schema_embedding).item()
+                for doc_type, schema_embedding in schema_embeddings.items()
+            }
+
+            # Find best match
+            best_type, best_score = max(similarity_scores.items(), key=lambda x: x[1])
+
+            print(f"Paragraph: {paragraph[:60]}... → Best Match: {best_type} ({best_score:.4f})")
+
+            # Count vote only if above threshold
+            if 0.5 <= best_score:
+                vote_counts[best_type] += 1
+                valid_vote_count += 1
+
+        if valid_vote_count == 0:
+            return None, None  # No reliable match
+
+        # Normalize vote counts by valid votes
+        normalized_scores = {
+            doc_type: count / valid_vote_count
+            for doc_type, count in vote_counts.items()
         }
-        delivery_note_json_embedding = RAGService.embedding_model.encode(json.dumps(delivery_note_schema))
 
-        invoice_similarity_score = util.pytorch_cos_sim(text_embedding, invoice_json_embedding).item()
-        delivery_note_similarity_score = util.pytorch_cos_sim(text_embedding, delivery_note_json_embedding).item()
+        # Select document type with highest normalized score
+        final_type = max(normalized_scores.items(), key=lambda x: x[1])[0]
 
-        print('FIND A THRESHHOLD OF RETURN NONE AND RETURN NONE')
-        print('invoice_similarity_score:', invoice_similarity_score)
-        print('delivery_note_similarity_score:', delivery_note_similarity_score)
-
-        if delivery_note_similarity_score < invoice_similarity_score:
-            return invoice_schema, 'invoice'
-        else:
-            return delivery_note_schema, 'delivery_note'
+        return self.doc_schemata[final_type], final_type
 
 
 # company = 'MyCompany'

@@ -21,8 +21,11 @@ class OCR:
         self.ocr_model.doc_builder.resolve_blocks = True  # Group lines into blocks (paragraphs)
 
 
-    def extract_pdf_data(self, path):
-        pages = DocumentFile.from_pdf(path)
+    def extract_pdf_data(self, path, page_index=None):
+        if page_index is not None:
+            pages = DocumentFile.from_pdf(path, page_indices=[page_index])
+        else:
+            pages = DocumentFile.from_pdf(path)
         return self.ocr_model(pages)
 
 

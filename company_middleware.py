@@ -13,13 +13,13 @@ class CompanyMiddleware:
 
     def add_doc(self, source_path, dest_path, access_groups, user_access_role):
         path = self.access_manger.create_file_access(dest_path, access_groups, user_access_role).data
-        return self.rag_service.add_doc(source_path, path) # TODO: Check if this raises an exception, it should
+        return self.rag_service.add_doc(source_path, access_groups, path) # TODO: Check if this raises an exception, it should
 
         
-    def update_doc(self, old_path, new_path, new_access_groups, user_access_role):
+    def update_doc(self, old_path, new_path, new_json, new_access_groups, user_access_role):
         old_path = self.path_normalizer.get_relative_comany_path(old_path)
         new_path = self.access_manger.update_file_access(old_path, new_path, new_access_groups, user_access_role).data
-        return self.rag_service.update_doc(old_path, new_path) # TODO: Check if this raises an exception, it should
+        return self.rag_service.update_doc(old_path, new_path, new_json, new_access_groups) # TODO: Check if this raises an exception, it should
         
     
     def delete_doc(self, path, user_access_role):

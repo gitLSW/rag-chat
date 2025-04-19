@@ -27,6 +27,7 @@ class AddDocRequest(BaseCompanyRequest):
 class UpdateDocRequest(BaseCompanyRequest):
     old_path: str
     new_path: str
+    new_doc_json: dict
     new_access_groups: List[str]
 
 
@@ -100,7 +101,7 @@ async def add_doc(req: AddDocRequest):
 @app.post("/update_doc")
 def update_doc(req: UpdateDocRequest):
     company_mw = get_company_middleware(req.company_id)
-    return company_mw.update_doc(req.old_path, req.new_path, req.new_access_groups, req.user_role)
+    return company_mw.update_doc(req.old_path, req.new_path, req.new_doc_json, req.new_access_groups, req.user_role)
 
 
 @app.post("/delete_doc")
