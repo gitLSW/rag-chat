@@ -56,8 +56,6 @@ class MongoshConnector:
             print("Error: User already exists")
         except ConnectionFailure:
             print("Error: Could not connect to MongoDB")
-        finally:
-            admin_client.close()
 
     
     
