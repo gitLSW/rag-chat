@@ -30,7 +30,7 @@ class LLMService:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model)
 
 
-    async def query(self, prompt, sampling_params=None):
+    async def query(self, prompt, sampling_params=None, stream=False):
         if sampling_params is None:
             sampling_params = SamplingParams(
                 temperature=0.3,
@@ -38,21 +38,33 @@ class LLMService:
                 max_tokens=2048,
                 # stop=["\n\n", "\n", "Q:", "###"]
             )
-
-        res = await self.client.completions.create(
+            
+        if not stream:
+            res = await self.client.completions.create(
+                model=self.model,
+                prompt=prompt,
+                temperature=sampling_params.temperature,
+                top_p=sampling_params.top_p,
+                max_tokens=sampling_params.max_tokens,
+                stop=sampling_params.stop
+            )
+            return res.choices[0].text
+            
+        # Enable streaming
+        stream = await self.client.completions.create(
             model=self.model,
             prompt=prompt,
             temperature=sampling_params.temperature,
             top_p=sampling_params.top_p,
             max_tokens=sampling_params.max_tokens,
-            stop=sampling_params.stop
+            stop=sampling_params.stop,
+            stream=True  # Enable streaming
         )
-        return res.choices[0].text
-    
 
-    def generate_db_query(quaestion):
-        prompt = 'Useing SQL egenerate a request tto'
-
+        # Yield text chunks incrementally
+        async for chunk in stream:
+            yield chunk.choices[0].text
+        
 
 
 
