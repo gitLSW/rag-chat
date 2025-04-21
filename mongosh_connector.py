@@ -2,6 +2,13 @@ import re
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure, PyMongoError
 from typing import Dict, Any
+from pymongo import MongoClient
+from pymongo.errors import OperationFailure, DuplicateKeyError, ConnectionFailure
+
+LLM_USER_CREDENTIALS = {
+    "username": "llm_readonly",
+    "password": "StrongPassword123!"
+}
 
 class MongoshConnector:
     """
@@ -18,7 +25,7 @@ class MongoshConnector:
         """
         # Connect with read-only user credentials
         self.client = MongoClient(
-            "mongodb://llm_readonly:password@localhost:27017/",
+            f"mongodb://{LLM_USER_CREDENTIALS.username}:{LLM_USER_CREDENTIALS.password}@localhost:27017/",
             authSource=company_id,
             # Important security settings
             connectTimeoutMS=5000,
@@ -33,6 +40,26 @@ class MongoshConnector:
         # Settings for safe execution
         self.max_time_ms = 5000  # Max query execution time
         self.max_docs = 100      # Max documents to return
+
+        try:
+            # Create user in the target database
+            result = self.db.command("createUser",
+                LLM_USER_CREDENTIALS.username,
+                pwd=LLM_USER_CREDENTIALS.password,
+                roles=[{"role": "read", "db": "customer_company_db"}]
+            )
+            print("User created successfully:", result)
+            
+        except OperationFailure as e:
+            print(f"Operation failed: {e.details['errmsg']}")
+        except DuplicateKeyError:
+            print("Error: User already exists")
+        except ConnectionFailure:
+            print("Error: Could not connect to MongoDB")
+        finally:
+            admin_client.close()
+
+    
     
     async def run(self, commands: str) -> Dict[str, Any]:
         """
@@ -87,6 +114,7 @@ class MongoshConnector:
                 'error': f'Execution Error: {str(e)}'
             }
     
+    
     async def _execute_eval(self, command: str) -> Any:
         """
         Execute command using MongoDB's eval (with safety checks).
@@ -117,6 +145,7 @@ class MongoshConnector:
             raise OperationFailure(result['retval']['error'])
             
         return result.get('retval')
+    
     
     async def _execute_special(self, command: str) -> Any:
         """
@@ -157,6 +186,7 @@ class MongoshConnector:
                 
         raise OperationFailure(f"Unsupported command format: {command}")
     
+    
     def _split_commands(self, commands: str) -> List[str]:
         """
         Split commands by semicolons, ignoring those inside strings/objects.
@@ -187,6 +217,7 @@ class MongoshConnector:
             parts.append(final_cmd)
             
         return parts
+        
     
     def close(self):
         """Close the MongoDB connection."""
