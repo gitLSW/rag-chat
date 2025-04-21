@@ -73,7 +73,7 @@ class RAGService:
         return OKResponse(f'Successfully added new JSON schema for {new_doc_type}')
 
 
-    def add_doc(self, source_path, access_groups, dest_path=None, doc_type=None):
+    async def add_doc(self, source_path, access_groups, dest_path=None, doc_type=None):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -95,8 +95,8 @@ class RAGService:
             dest_path = self.doc_path_classifier.classify_doc(doc_text) + file_name
 
         # Extract JSON and create or overwrite in DB
-        doc_json_collection = self.json_db[doc_type]
-        filled_json, doc_type, is_json_complete = self.extract_json(doc_text, doc_type)        
+        filled_json, doc_type, is_json_complete = await self.extract_json(doc_text, doc_type)
+        doc_json_collection = self.json_db[doc_type]       
         if doc_type and is_json_complete:
             doc_json_collection.replace_one({ '_id': dest_path }, {
                     'doc_path': dest_path,
@@ -229,6 +229,14 @@ class RAGService:
         Returns:
             str: Final LLM-generated answer with source references.
         """
+        async def _load_and_summarize_doc(rel_doc_path):
+            txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
+            async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+                doc_text = await f.read()
+
+            summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
+            return await RAGService.llm_service.query(summarize_prompt)
+        
         # Read and summarize all docs concurrently
         summarize_tasks = []
         doc_types = set()
@@ -243,7 +251,7 @@ class RAGService:
             else:
                 doc_sources_map[rel_doc_path].add(page_num)
             
-            summarize_tasks.append(self._load_and_summarize_doc(rel_doc_path))
+            summarize_tasks.append(_load_and_summarize_doc(rel_doc_path))
 
         # Run all LLM summaries concurrently via vLLM server
         doc_summaries = await asyncio.gather(*summarize_tasks)
@@ -282,15 +290,6 @@ class RAGService:
         answer_text = re.sub(r'<think>.*?</think>', '', answer, flags=re.DOTALL)
 
         return OKResponse(data={ 'llm_response': sources_info + answer_text })
-    
-
-    async def _load_and_summarize_doc(self, rel_doc_path):
-        txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
-        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-            doc_text = await f.read()
-
-        summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
-        return await RAGService.llm_service.query(summarize_prompt)
     
 
     async def extract_json(self, text, doc_type=None):

@@ -11,9 +11,9 @@ class CompanyMiddleware:
         self.path_normalizer = PathNormalizer(company_id)
 
 
-    def add_doc(self, source_path, dest_path, access_groups, user_access_role):
+    async def add_doc(self, source_path, dest_path, access_groups, user_access_role):
         path = self.access_manger.create_file_access(dest_path, access_groups, user_access_role).data
-        return self.rag_service.add_doc(source_path, access_groups, path) # TODO: Check if this raises an exception, it should
+        return await self.rag_service.add_doc(source_path, access_groups, path) # TODO: Check if this raises an exception, it should
 
         
     def update_doc(self, old_path, new_path, new_json, new_access_groups, user_access_role):

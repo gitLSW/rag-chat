@@ -11,7 +11,7 @@ class MongoDBConnector:
         self.db = mongo_db
         try:
             # Create user in the target db
-            result = db.command("createUser",
+            result = mongo_db.command("createUser",
                 "llm_user",
                 pwd="StrongPassword123!",
                 roles=[{"role": "read", "db": mongo_db.name}]
@@ -23,10 +23,9 @@ class MongoDBConnector:
             print("Error: User already exists")
         except ConnectionFailure:
             print("Error: Could not connect to MongoDB")
-        finally:
-            admin_client.close()
+
         
-    def execute_mongosh_command(self, command: str) -> Optional[dict]:
+    def execute_mongosh_command(self, command: str):
         """
         Execute a mongosh command after validating it only targets the allowed database
         """
@@ -49,7 +48,6 @@ class MongoDBConnector:
             
             # Parse and return the result
             return json.loads(result.stdout)
-            
         except subprocess.CalledProcessError as e:
             return {"error": f"MongoDB command failed: {e.stderr}"}
         except json.JSONDecodeError:

@@ -90,7 +90,7 @@ async def add_doc(req: AddDocRequest):
         buffer.write(await req.file.read())
 
     # Add document logic
-    res = company_mw.add_doc(source_path, req.path, req.new_doc_access_groups, req.user_role)
+    res = await company_mw.add_doc(source_path, req.path, req.new_doc_access_groups, req.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
