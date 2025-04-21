@@ -248,7 +248,7 @@ class RAGService:
         # Run all LLM summaries concurrently via vLLM server
         doc_summaries = await asyncio.gather(*summarize_tasks)
 
-        # Step 3: Create final prompt
+        # Create final prompt
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n"
         for doc_summary in doc_summaries:
             clean_summary = re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)
@@ -261,10 +261,15 @@ class RAGService:
         
         prompt += '\n\nIf you want to query the MongoDB, write them in tags like so: ```mongosh YOUR COMMANDS ```'
 
-        # Step 4: Final prompt to answer the question (still single prompt)
-        final_answer = await RAGService.llm_service.query(prompt)
+        # Final prompt to answer the question (still single prompt)
+        answer = await RAGService.llm_service.query(prompt)
 
-        # Step 5: Compose source references
+        # Extract mongosh commands if existant
+        mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
+        if mongosh_commands:
+            self.mongosh_service.run(mongosh_commands)
+
+        # Compose source references
         sources_info = 'Consult these documents for more detail:\n'
         for doc_path, pages in doc_sources_map.items():
             sources_info += doc_path
@@ -274,7 +279,7 @@ class RAGService:
                 sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
 
         # Clean out any lingering <think> tags
-        answer_text = re.sub(r'<think>.*?</think>', '', final_answer, flags=re.DOTALL)
+        answer_text = re.sub(r'<think>.*?</think>', '', answer, flags=re.DOTALL)
 
         return OKResponse(data={ 'llm_response': sources_info + answer_text })
     

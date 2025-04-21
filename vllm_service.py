@@ -48,7 +48,8 @@ class LLMService:
             stop=sampling_params.stop,
             stream=stream  # Enable streaming
         )
-            
+        
+        # Return the completed text if streaming is disabled
         if not stream:
             return res.choices[0].text
 
