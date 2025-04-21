@@ -39,30 +39,21 @@ class LLMService:
                 # stop=["\n\n", "\n", "Q:", "###"]
             )
             
-        if not stream:
-            res = await self.client.completions.create(
-                model=self.model,
-                prompt=prompt,
-                temperature=sampling_params.temperature,
-                top_p=sampling_params.top_p,
-                max_tokens=sampling_params.max_tokens,
-                stop=sampling_params.stop
-            )
-            return res.choices[0].text
-            
-        # Enable streaming
-        stream = await self.client.completions.create(
+        res = await self.client.completions.create(
             model=self.model,
             prompt=prompt,
             temperature=sampling_params.temperature,
             top_p=sampling_params.top_p,
             max_tokens=sampling_params.max_tokens,
             stop=sampling_params.stop,
-            stream=True  # Enable streaming
+            stream=stream  # Enable streaming
         )
+            
+        if not stream:
+            return res.choices[0].text
 
         # Yield text chunks incrementally
-        async for chunk in stream:
+        async for chunk in res:
             yield chunk.choices[0].text
         
 
