@@ -110,11 +110,11 @@ class MongoshConnector:
         return safe_args
 
 
-    def run(self, command: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    def _run_command(self, commands: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         try:
-            collection_name = command.get("collection")
-            operation = command.get("operation")
-            arguments = command.get("arguments", {})
+            collection_name = commands.get("collection")
+            operation = commands.get("operation")
+            arguments = commands.get("arguments", {})
     
             if not collection_name or not operation:
                 raise ValueError("Missing required fields: 'collection' and 'operation'.")
