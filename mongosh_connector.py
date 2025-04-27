@@ -89,13 +89,14 @@ class MongoshConnector:
         Safely adjust and validate arguments for supported operations.
         """
         safe_args = arguments.copy()
-
-        # Enforce maxTimeMS
-        allowed_operations = ["find", "find_one", "aggregate", "distinct", "count_documents"]
+        
+        # Check operation exists and is allowed
+        allowed_operations = {"find", "find_one", "aggregate", "distinct", "count_documents"}
         if operation not in allowed_operations:
             raise ValueError(f"Operation '{operation}' is not allowed.")
-        else:
-            safe_args.setdefault("maxTimeMS", self.max_time_ms)
+        
+        # Enforce maxTimeMS
+        safe_args.setdefault("maxTimeMS", self.max_time_ms)
 
         # Enforce limits on cursor-returning operations
         if operation == "find":
@@ -124,11 +125,6 @@ class MongoshConnector:
     
             # Access collection
             collection = self.db[collection_name]
-    
-            # Check operation exists and is allowed
-            allowed_operations = {"find", "find_one", "aggregate", "distinct", "count_documents"}
-            if operation not in allowed_operations:
-                raise ValueError(f"Operation '{operation}' is not allowed.")
     
             method = getattr(collection, operation)
     
