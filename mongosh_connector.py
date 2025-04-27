@@ -38,6 +38,22 @@ class MongoshConnector:
         # Settings for safe query execution
         self.max_time_ms = 5000
         self.max_docs = 100
+        
+        try:
+            # Create user in the target database
+            result = self.db.command("createUser",
+                LLM_USER_CREDENTIALS.username,
+                pwd=LLM_USER_CREDENTIALS.password,
+                roles=[{"role": "read", "db": company_id}] # read-only on company's DB
+            )
+            print("User created successfully:", result)
+            
+        except OperationFailure as e:
+            print(f"Operation failed: {e.details['errmsg']}")
+        except DuplicateKeyError:
+            print("Expected Behaviour: User already exists")
+        except ConnectionFailure:
+            print("Error: Could not connect to MongoDB")
 
     def _sanitize_aggregate_pipeline(self, pipeline: List[Dict[str, Any]]):
         """
