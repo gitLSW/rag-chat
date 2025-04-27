@@ -267,15 +267,15 @@ class RAGService:
         for doc_type in doc_types:
             prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
         
-        prompt += '\n\nIf you want to query the MongoDB, write a JSON query in tags like so: ```mongodb YOUR JSON COMMAND ```'
+        prompt += '\n\nIf you want to query the MongoDB, write a mongosh query in tags like so: ```mongosh YOUR COMMAND ```'
 
         # Final prompt to answer the question (still single prompt)
         answer = await RAGService.llm_service.query(prompt)
 
         # Extract mongosh commands if existant
-        mongodb_commands = re.search(r"```mongodb\s*(.*?)\s*```", answer, re.DOTALL).group(1)
-        if mongodb_commands:
-            self.mongosh_service.run(mongodb_commands)
+        mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
+        if mongosh_commands:
+            self.mongosh_service.run(mongosh_commands)
 
         # Compose source references
         sources_info = 'Consult these documents for more detail:\n'
