@@ -29,29 +29,11 @@ class MongoshConnector:
         self.company_id = company_id
         self.port = 27017
         self.auth_source = company_id  # Authentication happens inside their own database
-        self.uri = self._build_uri()
-
-
-    def _build_uri(self):
+        
         username = urllib.parse.quote_plus(f"llm_{company_id}")
         password = urllib.parse.quote_plus(LLM_USER_PASSWORD)
-        return f"mongodb://{username}:{password}@localhost:27017/?authSource={self.auth_source}"
+        self.uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={self.auth_source}"
 
-
-    def _validate_company_id(self, company_id):
-        # Only allow alphanumeric + underscores
-        return bool(re.fullmatch(r"[a-zA-Z0-9_]+", company_id))
-
-    def _validate_command(self, mongosh_cmd):
-        if not isinstance(mongosh_cmd, str):
-            raise ValueError("mongosh_cmd must be a string.")
-
-        if len(mongosh_cmd) > 5000:
-            raise ValueError("mongosh_cmd is too long.")
-
-        for pattern in DANGEROUS_JS_PATTERNS:
-            if re.search(pattern, mongosh_cmd, flags=re.IGNORECASE):
-                raise ValueError(f"Potentially dangerous JavaScript detected: '{pattern}'")
 
     def run(self, mongosh_cmd):
         """
@@ -85,3 +67,20 @@ class MongoshConnector:
 
         except Exception as e:
             return f"Error executing mongosh command: {str(e)}"
+
+
+    def _validate_company_id(self, company_id):
+        # Only allow alphanumeric + underscores
+        return bool(re.fullmatch(r"[a-zA-Z0-9_]+", company_id))
+
+
+    def _validate_command(self, mongosh_cmd):
+        if not isinstance(mongosh_cmd, str):
+            raise ValueError("mongosh_cmd must be a string.")
+
+        if len(mongosh_cmd) > 5000:
+            raise ValueError("mongosh_cmd is too long.")
+
+        for pattern in DANGEROUS_JS_PATTERNS:
+            if re.search(pattern, mongosh_cmd, flags=re.IGNORECASE):
+                raise ValueError(f"Potentially dangerous JavaScript detected: '{pattern}'")
