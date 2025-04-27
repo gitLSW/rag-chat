@@ -262,12 +262,12 @@ class RAGService:
             clean_summary = re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)
             prompt += '\n\n' + clean_summary
 
-        prompt += '\n\n\nYou may also optionally use mongosh to query the database about the documents in question. You only have read access. These are the JSON schemata for each MongoDB collection:'
+        prompt += '\n\n\nYou have read-only access to the Mongo database. These are the JSON schemata for each MongoDB collection:'
 
         for doc_type in doc_types:
             prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
         
-        prompt += '\n\nIf you want to query the MongoDB, write them in tags like so: ```mongosh YOUR COMMANDS ```'
+        prompt += '\n\nIf you want to query the MongoDB, write a JSON query in tags like so: ```mongodb YOUR COMMANDS ```'
 
         # Final prompt to answer the question (still single prompt)
         answer = await RAGService.llm_service.query(prompt)
