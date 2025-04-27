@@ -110,51 +110,51 @@ class MongoshConnector:
 
 
     def run(self, command: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-    try:
-        collection_name = command.get("collection")
-        operation = command.get("operation")
-        arguments = command.get("arguments", {})
-
-        if not collection_name or not operation:
-            raise ValueError("Missing required fields: 'collection' and 'operation'.")
-
-        # Validate collection name (no cross-database access)
-        if "." in collection_name:
-            raise ValueError("Cross-database access is not allowed.")
-
-        # Access collection
-        collection = self.db[collection_name]
-
-        # Check operation exists and is allowed
-        allowed_operations = {"find", "find_one", "aggregate", "distinct", "count_documents"}
-        if operation not in allowed_operations:
-            raise ValueError(f"Operation '{operation}' is not allowed.")
-
-        method = getattr(collection, operation)
-
-        if not isinstance(arguments, dict):
-            raise ValueError("'arguments' must be a dictionary.")
-
-        safe_args = self._safe_arguments(operation, arguments)
-
-        # Validate 'pipeline' for aggregation
-        if operation == "aggregate":
-            pipeline = safe_args.get("pipeline", [])
-            self._sanitize_aggregate_pipeline(pipeline)
-
-        result = method(**safe_args)
-
-        # Return result directly (or limit cursor results)
-        if hasattr(result, "limit"):
-            result = result.limit(self.max_docs).max_time_ms(self.max_time_ms)
-            return list(result)
-
-        return result
-
-    except PyMongoError as e:
-        return {"error": f"Database query failed: {str(e)}"}
-    except Exception as e:
-        return {"error": f"Invalid query or unsafe operation detected: {str(e)}"}
+        try:
+            collection_name = command.get("collection")
+            operation = command.get("operation")
+            arguments = command.get("arguments", {})
+    
+            if not collection_name or not operation:
+                raise ValueError("Missing required fields: 'collection' and 'operation'.")
+    
+            # Validate collection name (no cross-database access)
+            if "." in collection_name:
+                raise ValueError("Cross-database access is not allowed.")
+    
+            # Access collection
+            collection = self.db[collection_name]
+    
+            # Check operation exists and is allowed
+            allowed_operations = {"find", "find_one", "aggregate", "distinct", "count_documents"}
+            if operation not in allowed_operations:
+                raise ValueError(f"Operation '{operation}' is not allowed.")
+    
+            method = getattr(collection, operation)
+    
+            if not isinstance(arguments, dict):
+                raise ValueError("'arguments' must be a dictionary.")
+    
+            safe_args = self._safe_arguments(operation, arguments)
+    
+            # Validate 'pipeline' for aggregation
+            if operation == "aggregate":
+                pipeline = safe_args.get("pipeline", [])
+                self._sanitize_aggregate_pipeline(pipeline)
+    
+            result = method(**safe_args)
+    
+            # Return result directly (or limit cursor results)
+            if hasattr(result, "limit"):
+                result = result.limit(self.max_docs).max_time_ms(self.max_time_ms)
+                return list(result)
+    
+            return result
+    
+        except PyMongoError as e:
+            return {"error": f"Database query failed: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Invalid query or unsafe operation detected: {str(e)}"}
 
 
     def close(self):
