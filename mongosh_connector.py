@@ -58,163 +58,89 @@ class MongoshConnector:
             print("Error: Could not connect to MongoDB")
 
     
-    
-    async def run(self, commands: str) -> Dict[str, Any]:
+    def validate(self, command: str) -> bool:
         """
-        Execute mongosh commands safely using read-only permissions.
+        Validate that the command is safe to execute in mongosh context.
         
         Args:
-            commands: One or more mongosh commands separated by semicolons
+            command: The mongosh command to validate
             
         Returns:
-            Dictionary with:
-            - success: bool
-            - results: list of command results if successful
-            - error: error message if failed
+            bool: True if command is valid, False otherwise
         """
+        # Disallowed patterns that could potentially cause harm or access other databases
+        disallowed_patterns = [
+            r'\.\.',  # Parent directory references
+            r'process\.',  # Access to process object
+            r'load\s*\(',  # Loading external files
+            r'eval\s*\(',  # eval function
+            r'new\s+Date\s*\(',  # Potential date manipulation
+            r'system\.',  # System access
+            r'sleep\s*\(',  # Sleep/delay operations
+            r'db\.getSiblingDB\s*\(',  # Accessing other databases
+            r'db\.adminCommand\s*\(',  # Admin commands
+            r'db\.\w+\.(insert|update|remove|delete|drop|create|rename)',  # Write operations
+            r'shutdown\s*\(',  # Shutdown commands
+            r'while\s*\(',  # Potential infinite loops
+            r'for\s*\(',  # Potential heavy loops
+            r'function\s*\(',  # Function declaration
+        ]
+        
+        # Check for disallowed patterns
+        for pattern in disallowed_patterns:
+            if re.search(pattern, command, re.IGNORECASE):
+                return False
+                
+        # Check if command tries to access a different database
+        if re.search(r'db\s*=\s*(?!db\b)[\w\.]+', command):
+            return False
+            
+        return True
+
+    def run(self, command: str) -> Union[Dict[str, Any], List[Dict[str, Any]], str]:
+        """
+        Execute a mongosh command safely after validation.
+        
+        Args:
+            command: The mongosh command to execute
+            
+        Returns:
+            The result of the command execution or an error message
+            
+        Raises:
+            ValueError: If command is invalid or unsafe
+            PyMongoError: For MongoDB-related errors
+        """
+        # First, validate the command
+        if not self.validate(command):
+            raise ValueError("Command contains potentially unsafe operations")
+        
         try:
-            # Split commands while handling semicolons in strings/objects
-            command_list = self._split_commands(commands)
-            results = []
+            # Special handling for find() operations to apply limits
+            if '.find(' in command and not ('.limit(' in command or '.toArray(' in command):
+                # If it's a find command without limit, we'll add our own
+                modified_command = command.replace('.find(', f'.find().limit({self.max_docs})', 1)
+                command = modified_command
             
-            for cmd in command_list:
-                try:
-                    # First try eval-style execution (for most commands)
-                    result = await self._execute_eval(cmd)
-                    results.append({
-                        'command': cmd,
-                        'result': result
-                    })
-                except OperationFailure as e:
-                    # If eval fails, try specific handling for certain commands
-                    if 'eval' in str(e).lower():
-                        result = await self._execute_special(cmd)
-                        results.append({
-                            'command': cmd,
-                            'result': result
-                        })
-                    else:
-                        raise
-                        
-            return {
-                'success': True,
-                'results': results
-            }
+            # Execute the command in eval context (simulating mongosh)
+            # Note: In production, you might want to parse and use proper MongoDB API calls instead
+            result = self.db.eval(f"function() {{ return {command}; }}", max_time_ms=self.max_time_ms)
             
+            # Convert MongoDB cursor to list if needed
+            if hasattr(result, 'alive'):
+                result = list(result)[:self.max_docs]
+                
+            return result
+            
+        except OperationFailure as e:
+            # Handle MongoDB operation errors
+            if 'not authorized' in str(e):
+                return "Error: Permission denied - read-only access"
+            return f"MongoDB operation error: {e.details.get('errmsg', str(e))}"
         except PyMongoError as e:
-            return {
-                'success': False,
-                'error': f'MongoDB Error: {str(e)}'
-            }
+            return f"MongoDB error: {str(e)}"
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'Execution Error: {str(e)}'
-            }
-    
-    
-    async def _execute_eval(self, command: str) -> Any:
-        """
-        Execute command using MongoDB's eval (with safety checks).
-        """
-        # Add safety wrappers to the command
-        wrapped = f"""
-        (function() {{
-            // Safety limits
-            DBQuery.shellBatchSize = {self.max_docs};
-            
-            // Execute the command
-            try {{
-                return {command};
-            }} catch (e) {{
-                return {{error: e.message}};
-            }}
-        }})()
-        """
-        
-        # Execute with timeout
-        result = await self.db.command(
-            'eval',
-            wrapped,
-            maxTimeMS=self.max_time_ms
-        )
-        
-        if 'retval' in result and 'error' in result['retval']:
-            raise OperationFailure(result['retval']['error'])
-            
-        return result.get('retval')
-    
-    
-    async def _execute_special(self, command: str) -> Any:
-        """
-        Handle special cases that don't work well with eval.
-        """
-        # Match basic CRUD patterns
-        if match := re.match(r'db\.(\w+)\.(\w+)\((.*)\)', command):
-            collection, method, args = match.groups()
-            coll = self.db[collection]
-            
-            # Parse arguments safely
-            try:
-                parsed_args = eval(f'[{args}]', {'__builtins__': None}, {})
-            except:
-                parsed_args = []
-                
-            # Execute with appropriate method
-            if method == 'find':
-                query = parsed_args[0] if len(parsed_args) > 0 else {}
-                projection = parsed_args[1] if len(parsed_args) > 1 else None
-                cursor = coll.find(query, projection).limit(self.max_docs)
-                return list(cursor)
-                
-            elif method == 'aggregate':
-                pipeline = parsed_args[0] if len(parsed_args) > 0 else []
-                if not any('$limit' in stage for stage in pipeline):
-                    pipeline.append({'$limit': self.max_docs})
-                return list(coll.aggregate(pipeline))
-                
-            elif method in ('count', 'countDocuments'):
-                query = parsed_args[0] if len(parsed_args) > 0 else {}
-                return coll.count_documents(query)
-                
-            elif method == 'distinct':
-                field = parsed_args[0] if len(parsed_args) > 0 else None
-                query = parsed_args[1] if len(parsed_args) > 1 else {}
-                return coll.distinct(field, query)
-                
-        raise OperationFailure(f"Unsupported command format: {command}")
-    
-    
-    def _split_commands(self, commands: str) -> List[str]:
-        """
-        Split commands by semicolons, ignoring those inside strings/objects.
-        """
-        parts = []
-        current = []
-        in_string = False
-        in_object = 0
-        
-        for char in commands:
-            if char == ';' and not in_string and in_object == 0:
-                cmd = ''.join(current).strip()
-                if cmd:
-                    parts.append(cmd)
-                current = []
-            else:
-                current.append(char)
-                if char in ('"', "'"):
-                    in_string = not in_string
-                elif char == '{':
-                    in_object += 1
-                elif char == '}':
-                    in_object -= 1
-                    
-        # Add final command
-        final_cmd = ''.join(current).strip()
-        if final_cmd:
-            parts.append(final_cmd)
-            
-        return parts
+            return f"Unexpected error: {str(e)}"
         
     
     def close(self):
