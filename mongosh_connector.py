@@ -1,9 +1,7 @@
-import re
+import json
 from pymongo import MongoClient
-from pymongo.errors import OperationFailure, PyMongoError
-from typing import Dict, Any
-from pymongo import MongoClient
-from pymongo.errors import OperationFailure, DuplicateKeyError, ConnectionFailure
+from pymongo.errors import PyMongoError
+from typing import Dict, Any, Union, List
 
 LLM_USER_CREDENTIALS = {
     "username": "llm_readonly",
@@ -12,87 +10,128 @@ LLM_USER_CREDENTIALS = {
 
 class MongoshConnector:
     """
-    A connector that executes arbitrary read-only MongoDB commands safely
-    by using a dedicated read-only database user.
+    Safely execute MongoDB commands for the LLM within the company's own database,
+    using a read-only MongoDB user.
     """
-    
+
     def __init__(self, company_id: str):
         """
-        Initialize with read-only credentials.
-        
-        Args:
-            company_id: The database name to connect to
+        Connect to the company's database using read-only credentials.
         """
-        # Connect with read-only user credentials
+        self.company_id = company_id
+        
         self.client = MongoClient(
-            f"mongodb://{LLM_USER_CREDENTIALS.username}:{LLM_USER_CREDENTIALS.password}@localhost:27017/",
+            f"mongodb://{LLM_USER_CREDENTIALS['username']}:{LLM_USER_CREDENTIALS['password']}@localhost:27017/",
             authSource=company_id,
             authMechanism="SCRAM-SHA-256",
-            # Important security settings
-            connectTimeoutMS=5000,
-            socketTimeoutMS=30000,
+            tls=True,
+            tlsAllowInvalidCertificates=False,
             serverSelectionTimeoutMS=5000,
+            socketTimeoutMS=30000,
+            connectTimeoutMS=5000,
             retryWrites=False,
-            readPreference='secondaryPreferred'  # Reduce load on primary
+            readPreference="secondaryPreferred"
         )
         
-        self.db = self.client[company_id]
-        
-        # Settings for safe execution
-        self.max_time_ms = 5000  # Max query execution time
-        self.max_docs = 100      # Max documents to return
+        self.db = self.client[self.company_id]
 
-        try:
-            # Create user in the target database
-            result = self.db.command("createUser",
-                LLM_USER_CREDENTIALS.username,
-                pwd=LLM_USER_CREDENTIALS.password,
-                roles=[{"role": "read", "db": comapny_id}] # read-only on company's DB
-            )
-            print("User created successfully:", result)
-            
-        except OperationFailure as e:
-            print(f"Operation failed: {e.details['errmsg']}")
-        except DuplicateKeyError:
-            print("Error: User already exists")
-        except ConnectionFailure:
-            print("Error: Could not connect to MongoDB")
+        # Settings for safe query execution
+        self.max_time_ms = 5000
+        self.max_docs = 100
 
+    def _sanitize_aggregate_pipeline(self, pipeline: List[Dict[str, Any]]):
+        """
+        Validate aggregation pipeline to prevent dangerous operations like $out, $merge, or cross-database $lookup.
+        """
+        for stage in pipeline:
+            if not isinstance(stage, dict):
+                raise ValueError("Invalid aggregation pipeline stage format.")
+
+            for key, value in stage.items():
+                # Disallow stages that write
+                if key in ("$out", "$merge"):
+                    raise ValueError(f"Aggregation stage '{key}' is not allowed.")
+
+                # Validate $lookup stages
+                if key == "$lookup":
+                    if not isinstance(value, dict):
+                        raise ValueError("Invalid $lookup format.")
+                    from_collection = value.get("from", "")
+                    if "." in from_collection:
+                        raise ValueError("Cross-database $lookup is not allowed.")
     
-    def validate(self, command: str) -> bool:
-        # Use whitelist pattern
-        allowed_pattern = r'^db\.\w+\.(find|aggregate|count|distinct)\(.*\)(\.\w+\(.*\))*$'
-        return re.fullmatch(allowed_pattern, command) is not None
+                # Disallow $function usage
+                if key == "$project" or key == "$addFields":
+                    if isinstance(value, dict):
+                        if any("$function" in v for v in value.values() if isinstance(v, dict)):
+                            raise ValueError("$function usage inside pipeline is not allowed.")
 
+    def _safe_arguments(self, operation: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Safely adjust and validate arguments for supported operations.
+        """
+        safe_args = arguments.copy()
 
-    def run(self, command: str) -> Union[Dict, List[Dict], str]:
-        if not self.validate(command):
-            raise ValueError("Invalid command structure")
-        
+        # Enforce maxTimeMS
+        if operation in ("find", "find_one", "aggregate", "distinct", "count_documents"):
+            safe_args.setdefault("maxTimeMS", self.max_time_ms)
+
+        # Enforce limits on cursor-returning operations
+        if operation == "find":
+            safe_args.setdefault("limit", self.max_docs)
+        if operation == "aggregate":
+            pipeline = safe_args.get("pipeline", [])
+            if not isinstance(pipeline, list):
+                raise ValueError("'pipeline' must be a list.")
+            self._sanitize_aggregate_pipeline(pipeline)
+
+        return safe_args
+
+    def run(self, command: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Execute a safe MongoDB command.
+        """
         try:
-            # Parse command instead of using eval()
-            parts = command.split('.')
-            collection = self.db[parts[1]]
-            method_chain = parts[2:]
-            
-            result = collection
-            for call in method_chain:
-                if '(' in call:
-                    method_name, args = call.split('(', 1)
-                    args = args.rstrip(')')
-                    # Safe argument parsing
-                    parsed_args = json.loads(f'[{args}]')
-                    result = getattr(result, method_name)(*parsed_args)
-                else:
-                    result = getattr(result, call)
-            
-            # Always enforce limits
-            if isinstance(result, Cursor):
-                return list(result.limit(self.max_docs).max_time_ms(self.max_time_ms))
-            
+            collection_name = command.get("collection")
+            operation = command.get("operation")
+            arguments = command.get("arguments", {})
+
+            if not collection_name or not operation:
+                raise ValueError("Missing required fields: 'collection' and 'operation'.")
+
+            # Validate collection name (no cross-database access)
+            if "." in collection_name:
+                raise ValueError("Cross-database access is not allowed.")
+
+            # Access collection
+            collection = self.db[collection_name]
+
+            # Check operation exists
+            if not hasattr(collection, operation):
+                raise ValueError(f"Operation '{operation}' not available.")
+
+            method = getattr(collection, operation)
+
+            if not isinstance(arguments, dict):
+                raise ValueError("'arguments' must be a dictionary.")
+
+            safe_args = self._safe_arguments(operation, arguments)
+
+            result = method(**safe_args)
+
+            # If cursor, enforce limits
+            if hasattr(result, "limit") and hasattr(result, "max_time_ms"):
+                result = result.limit(self.max_docs).max_time_ms(self.max_time_ms)
+                return list(result)
+
+            # Otherwise, return result directly
             return result
-            
-    
+
+        except PyMongoError:
+            return {"error": "Database query failed."}
+        except Exception:
+            return {"error": "Invalid query or unsafe operation detected."}
+
     def close(self):
         """Close the MongoDB connection."""
         self.client.close()
