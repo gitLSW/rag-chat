@@ -55,6 +55,7 @@ class MongoshConnector:
         except ConnectionFailure:
             print("Error: Could not connect to MongoDB")
 
+
     def _sanitize_aggregate_pipeline(self, pipeline: List[Dict[str, Any]]):
         """
         Validate aggregation pipeline to prevent dangerous operations like $out, $merge, or cross-database $lookup.
@@ -82,6 +83,7 @@ class MongoshConnector:
                         if any("$function" in v for v in value.values() if isinstance(v, dict)):
                             raise ValueError("$function usage inside pipeline is not allowed.")
 
+
     def _safe_arguments(self, operation: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Safely adjust and validate arguments for supported operations.
@@ -89,7 +91,10 @@ class MongoshConnector:
         safe_args = arguments.copy()
 
         # Enforce maxTimeMS
-        if operation in ("find", "find_one", "aggregate", "distinct", "count_documents"):
+        allowed_operations = ["find", "find_one", "aggregate", "distinct", "count_documents"]
+        if operation not in allowed_operations:
+            raise ValueError(f"Operation '{operation}' is not allowed.")
+        else:
             safe_args.setdefault("maxTimeMS", self.max_time_ms)
 
         # Enforce limits on cursor-returning operations
@@ -102,6 +107,7 @@ class MongoshConnector:
             self._sanitize_aggregate_pipeline(pipeline)
 
         return safe_args
+
 
     def run(self, command: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """
@@ -147,6 +153,7 @@ class MongoshConnector:
             return {"error": "Database query failed."}
         except Exception:
             return {"error": "Invalid query or unsafe operation detected."}
+
 
     def close(self):
         """Close the MongoDB connection."""
