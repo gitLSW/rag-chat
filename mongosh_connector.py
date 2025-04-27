@@ -1,6 +1,6 @@
 import json
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, OperationFailure
 from typing import Dict, Any, Union, List
 
 LLM_USER_CREDENTIALS = {
@@ -24,8 +24,7 @@ class MongoshConnector:
             f"mongodb://{LLM_USER_CREDENTIALS['username']}:{LLM_USER_CREDENTIALS['password']}@localhost:27017/",
             authSource=company_id,
             authMechanism="SCRAM-SHA-256",
-            tls=True,
-            tlsAllowInvalidCertificates=False,
+            tls=False,  # Disable TLS since the DB is on the same machine
             serverSelectionTimeoutMS=5000,
             socketTimeoutMS=30000,
             connectTimeoutMS=5000,
@@ -40,21 +39,18 @@ class MongoshConnector:
         self.max_docs = 100
         
         try:
-            # Create user in the target database
+            # Create user in the target database (only if it does not exist)
             result = self.db.command("createUser",
-                LLM_USER_CREDENTIALS.username,
-                pwd=LLM_USER_CREDENTIALS.password,
+                LLM_USER_CREDENTIALS['username'],
+                pwd=LLM_USER_CREDENTIALS['password'],
                 roles=[{"role": "read", "db": company_id}] # read-only on company's DB
             )
             print("User created successfully:", result)
             
         except OperationFailure as e:
-            print(f"Operation failed: {e.details['errmsg']}")
-        except DuplicateKeyError:
-            print("Expected Behaviour: User already exists")
-        except ConnectionFailure:
-            print("Error: Could not connect to MongoDB")
-
+            print(f"Operation failed: {e.details.get('errmsg', 'Unknown error')}")
+        except Exception as e:
+            print(f"Error: Could not connect to MongoDB or create user. {str(e)}")
 
     def _sanitize_aggregate_pipeline(self, pipeline: List[Dict[str, Any]]):
         """
@@ -83,7 +79,6 @@ class MongoshConnector:
                         if any("$function" in v for v in value.values() if isinstance(v, dict)):
                             raise ValueError("$function usage inside pipeline is not allowed.")
 
-
     def _safe_arguments(self, operation: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Safely adjust and validate arguments for supported operations.
@@ -110,8 +105,11 @@ class MongoshConnector:
         return safe_args
 
 
-    def _run_command(self, commands: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    def run(self, command: str) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         try:
+            # Parse the command (assuming it is in JSON format)
+            commands = json.loads(command)
+            
             collection_name = commands.get("collection")
             operation = commands.get("operation")
             arguments = commands.get("arguments", {})
@@ -146,13 +144,15 @@ class MongoshConnector:
                 return list(result)
     
             return result
-    
+            
+        except json.JSONDecodeError as e:
+            return {"error": f"Invalid JSON format: {str(e)}"}
         except PyMongoError as e:
             return {"error": f"Database query failed: {str(e)}"}
         except Exception as e:
             return {"error": f"Invalid query or unsafe operation detected: {str(e)}"}
 
-
+    
     def close(self):
         """Close the MongoDB connection."""
         self.client.close()
