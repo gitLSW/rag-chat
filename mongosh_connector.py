@@ -27,12 +27,10 @@ class MongoshConnector:
             raise ValueError(f"Invalid company_id: {company_id}")
 
         self.company_id = company_id
-        self.port = 27017
-        self.auth_source = company_id  # Authentication happens inside their own database
         
         username = urllib.parse.quote_plus(f"llm_{company_id}")
         password = urllib.parse.quote_plus(LLM_USER_PASSWORD)
-        self.uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={self.auth_source}"
+        self.uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={company_id}"
 
 
     def run(self, mongosh_cmd):
