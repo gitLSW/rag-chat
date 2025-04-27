@@ -27,6 +27,7 @@ class MongoshConnector:
         self.client = MongoClient(
             f"mongodb://{LLM_USER_CREDENTIALS.username}:{LLM_USER_CREDENTIALS.password}@localhost:27017/",
             authSource=company_id,
+            authMechanism="SCRAM-SHA-256",
             # Important security settings
             connectTimeoutMS=5000,
             socketTimeoutMS=30000,
@@ -46,7 +47,7 @@ class MongoshConnector:
             result = self.db.command("createUser",
                 LLM_USER_CREDENTIALS.username,
                 pwd=LLM_USER_CREDENTIALS.password,
-                roles=[{"role": "read", "db": "customer_company_db"}]
+                roles=[{"role": "read", "db": comapny_id}] # read-only on company's DB
             )
             print("User created successfully:", result)
             
@@ -59,89 +60,38 @@ class MongoshConnector:
 
     
     def validate(self, command: str) -> bool:
-        """
-        Validate that the command is safe to execute in mongosh context.
-        
-        Args:
-            command: The mongosh command to validate
-            
-        Returns:
-            bool: True if command is valid, False otherwise
-        """
-        # Disallowed patterns that could potentially cause harm or access other databases
-        disallowed_patterns = [
-            r'\.\.',  # Parent directory references
-            r'process\.',  # Access to process object
-            r'load\s*\(',  # Loading external files
-            r'eval\s*\(',  # eval function
-            r'new\s+Date\s*\(',  # Potential date manipulation
-            r'system\.',  # System access
-            r'sleep\s*\(',  # Sleep/delay operations
-            r'db\.getSiblingDB\s*\(',  # Accessing other databases
-            r'db\.adminCommand\s*\(',  # Admin commands
-            r'db\.\w+\.(insert|update|remove|delete|drop|create|rename)',  # Write operations
-            r'shutdown\s*\(',  # Shutdown commands
-            r'while\s*\(',  # Potential infinite loops
-            r'for\s*\(',  # Potential heavy loops
-            r'function\s*\(',  # Function declaration
-        ]
-        
-        # Check for disallowed patterns
-        for pattern in disallowed_patterns:
-            if re.search(pattern, command, re.IGNORECASE):
-                return False
-                
-        # Check if command tries to access a different database
-        if re.search(r'db\s*=\s*(?!db\b)[\w\.]+', command):
-            return False
-            
-        return True
+        # Use whitelist pattern
+        allowed_pattern = r'^db\.\w+\.(find|aggregate|count|distinct)\(.*\)(\.\w+\(.*\))*$'
+        return re.fullmatch(allowed_pattern, command) is not None
 
-    def run(self, command: str) -> Union[Dict[str, Any], List[Dict[str, Any]], str]:
-        """
-        Execute a mongosh command safely after validation.
-        
-        Args:
-            command: The mongosh command to execute
-            
-        Returns:
-            The result of the command execution or an error message
-            
-        Raises:
-            ValueError: If command is invalid or unsafe
-            PyMongoError: For MongoDB-related errors
-        """
-        # First, validate the command
+
+    def run(self, command: str) -> Union[Dict, List[Dict], str]:
         if not self.validate(command):
-            raise ValueError("Command contains potentially unsafe operations")
+            raise ValueError("Invalid command structure")
         
         try:
-            # Special handling for find() operations to apply limits
-            if '.find(' in command and not ('.limit(' in command or '.toArray(' in command):
-                # If it's a find command without limit, we'll add our own
-                modified_command = command.replace('.find(', f'.find().limit({self.max_docs})', 1)
-                command = modified_command
+            # Parse command instead of using eval()
+            parts = command.split('.')
+            collection = self.db[parts[1]]
+            method_chain = parts[2:]
             
-            # Execute the command in eval context (simulating mongosh)
-            # Note: In production, you might want to parse and use proper MongoDB API calls instead
-            result = self.db.eval(f"function() {{ return {command}; }}", max_time_ms=self.max_time_ms)
+            result = collection
+            for call in method_chain:
+                if '(' in call:
+                    method_name, args = call.split('(', 1)
+                    args = args.rstrip(')')
+                    # Safe argument parsing
+                    parsed_args = json.loads(f'[{args}]')
+                    result = getattr(result, method_name)(*parsed_args)
+                else:
+                    result = getattr(result, call)
             
-            # Convert MongoDB cursor to list if needed
-            if hasattr(result, 'alive'):
-                result = list(result)[:self.max_docs]
-                
+            # Always enforce limits
+            if isinstance(result, Cursor):
+                return list(result.limit(self.max_docs).max_time_ms(self.max_time_ms))
+            
             return result
             
-        except OperationFailure as e:
-            # Handle MongoDB operation errors
-            if 'not authorized' in str(e):
-                return "Error: Permission denied - read-only access"
-            return f"MongoDB operation error: {e.details.get('errmsg', str(e))}"
-        except PyMongoError as e:
-            return f"MongoDB error: {str(e)}"
-        except Exception as e:
-            return f"Unexpected error: {str(e)}"
-        
     
     def close(self):
         """Close the MongoDB connection."""
