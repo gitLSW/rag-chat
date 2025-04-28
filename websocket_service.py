@@ -1,29 +1,36 @@
 from fastapi import WebSocket, WebSocketDisconnect
-import secrets
+from auth_middleware import AuthMiddleware
+from rag_service import RAGService
+import jwt
+import os
 
-# In-memory key store for simplicity (could use Redis or DB)
-VALID_KEYS = {}
+SECRET_KEY = os.getenv("SECRET_KEY", "super-secret")
 
 class WebSocketService:
     def __init__(self):
         pass
 
-    def register_key(self, user_id):
-        key = secrets.token_urlsafe(32)
-        VALID_KEYS[key] = user_id
-        return key
-
-    def validate_key(self, key):
-        return key in VALID_KEYS
-
     async def chat(self, websocket: WebSocket):
         await websocket.accept()
         try:
-            data = await websocket.receive_text()
-            if not self.validate_key(data):
+            token = websocket.headers.get("Authorization")
+            if not token:
                 await websocket.close(code=1008)
                 return
-            await websocket.send_text("Connected to GPU chat service!")
-            # More logic goes here
+            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            user_id = decoded.get("sub")
+            company_id = decoded.get("company_id")
+            role = decoded.get("role")
+            if not user_id or not company_id or not role:
+                await websocket.close(code=1008)
+                return
+
+            rag_service = RAGService(company_id)
+            async for message in websocket.iter_text():
+                async for chunk in rag_service.query(message):
+                    await websocket.send_text(chunk)
         except WebSocketDisconnect:
             print("WebSocket disconnected")
+        except Exception as e:
+            await websocket.close(code=1011)
+            print(f"WebSocket error: {e}")
