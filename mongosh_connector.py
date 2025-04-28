@@ -28,10 +28,6 @@ class MongoshConnector:
 
         self.company_id = company_id
         
-        username = urllib.parse.quote_plus(f"llm_{company_id}")
-        password = urllib.parse.quote_plus(LLM_USER_PASSWORD)
-        self.uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={company_id}"
-
 
     def run(self, mongosh_cmd):
         """
@@ -42,10 +38,14 @@ class MongoshConnector:
         """
         try:
             self._validate_command(mongosh_cmd)
+            
+            username = urllib.parse.quote_plus("llm_read_only")
+            password = urllib.parse.quote_plus(LLM_USER_PASSWORD)
+            uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={self.company_id}"
 
             cmd = [
                 "mongosh",
-                self.uri,
+                uri,
                 "--quiet",
                 "--eval",
                 f"use {self.company_id}; {mongosh_cmd}"
