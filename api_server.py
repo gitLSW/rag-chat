@@ -8,6 +8,8 @@ from fastapi import FastAPI, HTTPException, File, UploadFile
 from pydantic import BaseModel
 from typing import List, Optional
 from company_middleware import CompanyMiddleware
+from auth_middleware import AuthMiddleware  # test postman
+
 
 # -----------------------------
 # Request Models
@@ -62,6 +64,8 @@ def get_company_middleware(company_id):
 # -----------------------------
 
 app = FastAPI()
+app.add_middleware(AuthMiddleware)  # test postman
+
 
 @app.post("/add_doc")
 async def add_doc(req: AddDocRequest):
@@ -129,3 +133,47 @@ import uvicorn
 
 if __name__ == "__main__":
     uvicorn.run(app, host="172.0.0.1", port=7500, reload=True)
+
+
+# test postman 
+
+from fastapi import WebSocket, Depends
+import jwt
+import os
+from datetime import datetime, timedelta
+
+SECRET_KEY = os.getenv("SECRET_KEY", "super-secret")
+
+@app.post("/login")
+def login():
+    # return token for user_id = 123
+    payload = {
+        "sub": "123",
+        "company_id": "mycompany",
+        "role": "admin",
+        "exp": datetime.utcnow() + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return {"token": token}
+
+@app.websocket("/connectChat")
+async def connect_chat(websocket: WebSocket):
+    from rag_service import RAGService
+    await websocket.accept()
+
+    try:
+        token = websocket.headers.get("Authorization")
+        if not token:
+            await websocket.close(code=1008)
+            return
+
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        company_id = payload.get("company_id")
+
+        rag = RAGService(company_id)
+        async for message in websocket.iter_text():
+            async for chunk in rag.query(message):
+                await websocket.send_text(chunk)
+    except Exception as e:
+        await websocket.close(code=1011)
+        print("Error:", e)
