@@ -3,8 +3,3 @@ setuptools
 sentence_transformers
 chromadb
 openai
-PyJWT
-pymongo
-python-dotenv
-fastapi
-uvicorn
