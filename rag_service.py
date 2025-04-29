@@ -19,15 +19,10 @@ import jsonschema
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
 
-# Start LLMBatchProcessor
-# llm_service = LLMService()
-
-doc_extractor = DocExtractor()
-
 class RAGService:
     # Initialize persistent vector database (ChromaDB)
     vector_db = chromadb.PersistentClient(path="chroma_db")
-
+    doc_extractor = DocExtractor()
     llm_service = LLMService()
 
     # Load sentence embedding model
@@ -85,7 +80,7 @@ class RAGService:
         Returns:
             None
         """
-        paragraphs = doc_extractor.extract_paragraphs(source_path)
+        paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path)
 
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         

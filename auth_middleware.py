@@ -8,8 +8,7 @@ import os
 
 # Load environment variables
 load_dotenv()
-
-AUTH_PUBLIC_KEY = os.getenv("AUTH_PUBLIC_KEY")
+AUTH_PUBLIC_KEY = os.getenv('AUTH_PUBLIC_KEY')
 
 # PUBLIC_ROUTES = ["/route"]
 
@@ -39,8 +38,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             
             # Attach user data to request state (optional)
-            request.state.user_id = payload.get("user_id")
-            request.state.role = payload.get("role")
+            request.state.company_id = payload.get("company_id")
+            request.state.user_role = payload.get("user_role")
             
         except JWTError as e:
             raise HTTPException(

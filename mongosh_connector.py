@@ -1,9 +1,13 @@
 import subprocess
 import urllib.parse
 import re
+from dotenv import load_dotenv
+import os
 
+# Load environment variables
+load_dotenv()
 # LLM password for all company users
-LLM_USER_PASSWORD = "StrongPassword123!"  # or better: load from ENV variable
+LLM_USER = os.getenv('LLM_MONGO_USER')
 
 DANGEROUS_JS_PATTERNS = [
     r"\bwhile\s*\(",
@@ -39,8 +43,8 @@ class MongoshConnector:
         try:
             self._validate_command(mongosh_cmd)
             
-            username = urllib.parse.quote_plus("llm_read_only")
-            password = urllib.parse.quote_plus(LLM_USER_PASSWORD)
+            username = urllib.parse.quote_plus(LLM_USER.name)
+            password = urllib.parse.quote_plus(LLM_USER.password)
             uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={self.company_id}"
 
             cmd = [

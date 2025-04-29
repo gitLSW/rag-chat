@@ -1,5 +1,8 @@
 from pathlib import Path
 
+BANNED_CHARS = {'\\', ':', '*', '?', '"', '<', '>', '|', '\0'}
+
+
 class PathNormalizer:
 
     def __init__(self, company_id):
@@ -14,10 +17,9 @@ class PathNormalizer:
         return str(path.relative_to(root))
 
 
+
 def merge_path(root, path):
     # Forbid these characters in paths (strictest security)
-    BANNED_CHARS = {'\\', ':', '*', '?', '"', '<', '>', '|', '\0'}
-    
     if any(char in path for char in BANNED_CHARS):
         raise ValueError("Invalid path")
     

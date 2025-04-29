@@ -2,10 +2,13 @@ import asyncio
 from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
+import os
 
-LLM_URL = 'http://0.0.0.0:6096'
-# LLM_MODEL = 'MasterControlAIML/DeepSeek-R1-Qwen2.5-1.5b-SFT-R1-JSON-Unstructured-To-Structured' # 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'
-LLM_MODEL = "RedHatAI/DeepSeek-R1-Distill-Qwen-7B-quantized.w8a8" # 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
+# Load environment variables
+load_dotenv()
+LLM_URL = os.getenv('LLM_URL')
+LLM_MODEL = os.getenv('LLM_MODEL')
 
 class LLMService:
     """
