@@ -4,11 +4,12 @@ from path_normalizer import merge_path
 from mimetypes import guess_type
 from doc_extractor import DocExtractor
 from api_responses import *
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, WebSocket
 from pydantic import BaseModel
 from typing import List, Optional
 from company_middleware import CompanyMiddleware
 from auth_middleware import AuthMiddleware
+from websocket_service import WebsocketService
 
 # -----------------------------
 # Request Models
@@ -114,11 +115,15 @@ def search_docs(req: RAGRequest):
     return company_mw.search_docs(req.question, req.state.user_role, req.search_depth)
 
 
-@app.post("/query")
-async def query_llm(req: RAGRequest):
-    company_mw = get_company_middleware(req.state.company_id)
-    return await company_mw.query_llm(req.question, req.state.user_role, req.search_depth)
+@app.websocket("/ws/query")
+async def websocket_query(websocket: WebSocket):
+    company_id = websocket.scope["state"].company_id
+    user_role = websocket.scope["state"].user_role
+    company_mw = get_company_middleware(company_id)
+    ws_service = WebsocketService(company_mw)
+    await ws_service.handle(websocket, user_role)
     
+
 
 # main.py
 import uvicorn

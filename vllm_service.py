@@ -64,28 +64,28 @@ class LLMService:
 
 
 
-from doc_extractor import DocExtractor
-doc_extractor = DocExtractor()
+# from doc_extractor import DocExtractor
+# doc_extractor = DocExtractor()
 
-# List of sample prompts.
-# batch_prompts = [
-#     "Who was Caesar?",
-#     "Who was Alexander the Great?",
-#     "Which lands did Charlemagne own?",
-#     "Who defeated King Sigismund ?",
-# ]
+# # List of sample prompts.
+# # batch_prompts = [
+# #     "Who was Caesar?",
+# #     "Who was Alexander the Great?",
+# #     "Which lands did Charlemagne own?",
+# #     "Who defeated King Sigismund ?",
+# # ]
 
-# Initialize our batch query object.
-llm_service = LLMService()
+# # Initialize our batch query object.
+# llm_service = LLMService()
 
-async def test1(path):
-    text = doc_extractor.extract_text(path)
-    prompt = f"""Welche Leistungen wurden in der folgenden Rechnung abgerechnet: {text}"""
-    results = await llm_service.query(prompt)
-    print(f"Generated text: {results}\n")
+# async def test1(path):
+#     text = doc_extractor.extract_text(path)
+#     prompt = f"""Welche Leistungen wurden in der folgenden Rechnung abgerechnet: {text}"""
+#     results = await llm_service.query(prompt)
+#     print(f"Generated text: {results}\n")
 
 
-asyncio.run(test1('/home/lsw/Desktop/invoice.pdf'))
+# asyncio.run(test1('/home/lsw/Desktop/invoice.pdf'))
 
 # async def test2(path, json_schema):
 #     print('JSON SCHEMA:', json_schema)

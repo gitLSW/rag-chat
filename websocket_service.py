@@ -1,36 +1,30 @@
+import json
 from fastapi import WebSocket, WebSocketDisconnect
-from auth_middleware import AuthMiddleware
-from rag_service import RAGService
-import jwt
-import os
 
-SECRET_KEY = os.getenv("SECRET_KEY", "super-secret")
+class WebsocketService:
+    """
+    Handles WebSocket connections for streaming RAG responses token-by-token.
+    """
+    def __init__(self, company_mw):
+        self.company_mw = company_mw
 
-class WebSocketService:
-    def __init__(self):
-        pass
-
-    async def chat(self, websocket: WebSocket):
+    async def chat(self, websocket: WebSocket, user_role):
+        # Accept the WebSocket connection
         await websocket.accept()
         try:
-            token = websocket.headers.get("Authorization")
-            if not token:
-                await websocket.close(code=1008)
-                return
-            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            user_id = decoded.get("sub")
-            company_id = decoded.get("company_id")
-            role = decoded.get("role")
-            if not user_id or not company_id or not role:
-                await websocket.close(code=1008)
-                return
+            # Receive the initial payload (should contain question and optional search_depth)
+            data = await websocket.receive_json()
+            question = data.get("question")
+            search_depth = data.get("search_depth", 10)
 
-            rag_service = RAGService(company_id)
-            async for message in websocket.iter_text():
-                async for chunk in rag_service.query(message):
-                    await websocket.send_text(chunk)
+            # Stream tokens from the RAG pipeline
+            async for token in self.company_mw.query_llm(question, user_role, search_depth):
+                await websocket.send_text(token)
         except WebSocketDisconnect:
-            print("WebSocket disconnected")
+            # Client disconnected prematurely
+            print("WebSocket client disconnected")
         except Exception as e:
-            await websocket.close(code=1011)
-            print(f"WebSocket error: {e}")
+            # Send error message back to client
+            await websocket.send_text(json.dumps({"error": str(e)}))
+        finally:
+            await websocket.close()

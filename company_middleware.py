@@ -32,11 +32,15 @@ class CompanyMiddleware:
         return OKResponse(data=valid_docs_data)
         
 
-    async def query_llm(self, question, user_access_role, n_results):
+    async def query_llm(self, question, user_access_role, n_results, stream = False):
         valid_docs_data = self._find_docs(question, user_access_role, n_results)
         
         # Ask LLM to answer based on the valid sources
-        return await self.rag_service.query_llm(question, valid_docs_data)
+        if not stream:
+            return await self.rag_service.query_llm(question, valid_docs_data, stream=False)
+        
+        async for chunk in self.rag_service.query_llm(question, valid_docs_data, stream=True):
+            yield chunk
     
     
     def _find_docs(self, question, user_access_role, n_results):
