@@ -115,13 +115,24 @@ def search_docs(req: RAGRequest):
     return company_mw.search_docs(req.question, req.state.user_role, req.search_depth)
 
 
-@app.websocket("/ws/query")
+@app.websocket("/chat")
 async def websocket_query(websocket: WebSocket):
     company_id = websocket.scope["state"].company_id
     user_role = websocket.scope["state"].user_role
     company_mw = get_company_middleware(company_id)
-    ws_service = WebsocketService(company_mw)
-    await ws_service.handle(websocket, user_role)
+    
+    while True:
+        # Accept the WebSocket connection
+        await websocket.accept()
+
+        # Receive the chat message payload (should contain question and optional search_depth)
+        data = await websocket.receive_json()
+        question = data.get("question")
+        search_depth = data.get("search_depth", 10)
+
+        # Stream tokens from the RAG pipeline
+        async for token in company_mw.query_llm(question, user_role, search_depth, stream=True):
+            await websocket.send_text(token)
     
 
 
