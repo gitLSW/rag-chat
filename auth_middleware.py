@@ -11,20 +11,18 @@ load_dotenv()
 
 AUTH_PUBLIC_KEY = os.getenv("AUTH_PUBLIC_KEY")
 
+# PUBLIC_ROUTES = ["/route"]
+
 # Security scheme for Bearer token
 security = HTTPBearer()
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware to validate JWT tokens on every request."""
     
-    def __init__(self, app):
-        super().__init__(app)
-        self.public_key = public_key
-    
     async def dispatch(self, request: Request, call_next):
         # Skip auth for public routes (optional)
-        if request.url.path in ["/docs", "/openapi.json"]:
-            return await call_next(request)
+        # if request.url.path in PUBLIC_ROUTES:
+        #    return await call_next(request)
         
         # Extract token from header
         credentials: HTTPAuthorizationCredentials = await security(request)
