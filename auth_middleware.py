@@ -1,51 +1,69 @@
 # auth_middleware.py
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
-from dotenv import load_dotenv
-import os
-
-# Load environment variables
-load_dotenv()
-AUTH_PUBLIC_KEY = os.getenv('AUTH_PUBLIC_KEY')
+import requests
+import time
 
 # PUBLIC_ROUTES = ["/route"]
 
-# Security scheme for Bearer token
 security = HTTPBearer()
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware to validate JWT tokens on every request."""
-    
+
+    def __init__(self, app, public_key_url):
+        super().__init__(app)
+        self.public_key_url = public_key_url
+        self.public_key = None
+        self._public_key_last_updated = 0  # Unix timestamp
+        self._update_public_key()
+
+
     async def dispatch(self, request: Request, call_next):
         # Skip auth for public routes (optional)
         # if request.url.path in PUBLIC_ROUTES:
         #    return await call_next(request)
-        
+
         # Extract token from header
         credentials: HTTPAuthorizationCredentials = await security(request)
         if not credentials:
             raise HTTPException(status_code=401, detail="Missing Authorization header")
-        
+
+        token = credentials.credentials
+
         try:
-            # Verify token
-            token = credentials.credentials
-            payload = jwt.decode(
-                token,
-                AUTH_PUBLIC_KEY,
-                algorithms=["RS256"]
-            )
-            
-            # Attach user data to request state (optional)
-            request.state.company_id = payload.get("company_id")
-            request.state.user_role = payload.get("user_role")
-            
-        except JWTError as e:
-            raise HTTPException(
-                status_code=401,
-                detail=f"Invalid token: {str(e)}",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
+            payload = jwt.decode(token, self.public_key, algorithms=["RS256"])
+        except JWTError as e1:
+            # Attempt to refetch public key and retry decoding if it's older than 1 hour
+            try:
+                current_time = time.time()
+                if current_time - self._public_key_last_updated > 3600:
+                    self._update_public_key()
+                    payload = jwt.decode(token, self.public_key, algorithms=["RS256"])
+                else:
+                    raise e1
+            except JWTError as e2:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Invalid token after key refresh: {str(e2)}",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+        request.state.company_id = payload.get("company_id")
+        request.state.user_role = payload.get("user_role")
+
         return await call_next(request)
+
+
+    def _update_public_key(self):
+        """Fetch the public key from remote URL."""
+        try:
+            response = requests.get(self.public_key_url)
+            response.raise_for_status()
+            self.public_key = response.text
+            self._public_key_last_updated = time.time()
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch public key: {e}")

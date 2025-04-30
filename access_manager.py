@@ -33,12 +33,17 @@ class AccessManager:
     
 
     # Creates or overrides file
-    def create_file_access(self, path, new_access_groups, user_access_role):
+    def create_file_access(self, path, new_access_groups, user_access_role, allow_override=False):
         try:
-            # If the file already exists the user has no permission to override and a InsufficientAccessError gets raised
+            # If the file already exists and the user has permission to override, it will be overwritten
             standard_path = self.has_file_access(path, user_access_role).data
+            is_override = True
         except AccessNotFoundError as e:
-            pass # Expected and correct behaviour
+            standard_path = e.file_path
+            is_override = False
+
+        if is_override and not allow_override:
+            raise InsufficientAccessError(user_access_role=user_access_role, file_path=standard_path)
 
         lock = FileLock(self.access_table_path)
         with lock:

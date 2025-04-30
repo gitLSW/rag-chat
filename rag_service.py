@@ -13,8 +13,10 @@ from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
 from path_normalizer import PathNormalizer
+from access_manager import AccessManager
 from vllm import SamplingParams
 import jsonschema
+from fastapi import HTTPException
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -42,6 +44,8 @@ class RAGService:
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         # self.doc_path_classifier = DocPathClassifier(company_id)
         self.path_normalizer = PathNormalizer(company_id)
+        self.doc_path_classifier = DocPathClassifier(company_id)
+        self.access_manager = AccessManager(company_id)
 
         self.schemata_path = f'./{company_id}/doc_schemata.json'
         with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -68,7 +72,7 @@ class RAGService:
         return OKResponse(f'Successfully added new JSON schema for {new_doc_type}')
 
 
-    async def add_doc(self, source_path, access_groups, dest_path=None, doc_type=None):
+    async def add_doc(self, source_path, access_groups, user_access_role, dest_path=None, doc_type=None):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -85,13 +89,18 @@ class RAGService:
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         
         # Sort Document into path
+        allow_override = True
         if dest_path is None:
             file_name = source_path.split('/')[-1] # Last element
             dest_path = self.doc_path_classifier.classify_doc(doc_text) + file_name
+            allow_override = False
+        
+        # Create access to the new path
+        dest_path = self.access_manager.create_file_access(dest_path, access_groups, user_access_role, allow_override)
 
         # Extract JSON and create or overwrite in DB
         filled_json, doc_type, is_json_complete = await self.extract_json(doc_text, doc_type)
-        doc_json_collection = self.json_db[doc_type]       
+        doc_json_collection = self.json_db[doc_type]
         if doc_type and is_json_complete:
             doc_json_collection.replace_one({ '_id': dest_path }, {
                     'doc_path': dest_path,
@@ -132,48 +141,68 @@ class RAGService:
 
 
     # TEST THIS FUNCTION
-    def update_doc(self, old_path, new_path, new_json, new_access_groups):
-        # Convert PDF paths to TXT paths
-        old_txt_path = self.path_normalizer.get_full_company_path(old_path) + '.txt'
-        new_txt_path = self.path_normalizer.get_full_company_path(new_path) + '.txt'
-        
-        if os.path.exists(new_txt_path):
-            raise FileExistsError()
+    def update_doc(self, old_path, new_path=None, new_json=None, new_access_groups=None):
+        if new_json and new_json is str:
+            new_json = json.loads(new_json)
 
-        # Perform the file move/rename
-        os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
+        if new_path:
+            # Convert PDF paths to TXT paths
+            old_txt_path = self.path_normalizer.get_full_company_path(old_path) + '.txt'
+            new_txt_path = self.path_normalizer.get_full_company_path(new_path) + '.txt'
+            
+            if os.path.exists(new_txt_path):
+                raise FileExistsError()
+
+            # Perform the file move/rename
+            os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
         
         # Update ChromaDB metadata
         doc_entries = self.vector_db.get(where={'doc_path': old_path})
         
-        for doc_id in doc_entries["ids"]:
-            # Preserve all existing metadata, only update the path
-            current_metadata = self.vector_db.get(ids=[doc_id])["metadatas"][0]
-            updated_metadata = {
-                **current_metadata,  # Keep all existing metadata
-                'doc_path': new_path  # Only update the path
-            }
-            self.vector_db.update(
-                ids=[doc_id],
-                metadatas=[updated_metadata]
-            )
-
-        for collection_name in self.json_db.list_collection_names():
-            collection = self.json_db[collection_name]
-            old_doc = collection.find_one({ '_id': old_path })
-            if old_doc is None:
-                continue
-            updated_doc = {
-                    'doc_path': new_path,
-                    'access_groups': new_access_groups,
-                    **old_doc,
-                    **new_json
+        if new_path:
+            for doc_id in doc_entries["ids"]:
+                # Preserve all existing metadata, only update the path
+                current_metadata = self.vector_db.get(ids=[doc_id])["metadatas"][0]
+                updated_metadata = {
+                    **current_metadata,  # Keep all existing metadata
+                    'doc_path': new_path  # Only update the path
                 }
-            jsonschema.validate(updated_doc, self.doc_schemata[collection])
-            collection.insert_one({ '_id': new_path }, updated_doc) # Will raise a DuplicateKey error if already existant
-            collection.delete_one({ '_id': old_path })
+                self.vector_db.update(
+                    ids=[doc_id],
+                    metadatas=[updated_metadata]
+                )
+            
+        if new_path or new_json or new_access_groups:
+            for collection_name in self.json_db.list_collection_names():
+                collection = self.json_db[collection_name]
+                old_doc = collection.find_one({ '_id': old_path })
+                if old_doc is None:
+                    continue
+                
+                if new_json:
+                    updated_doc = {
+                        **updated_doc,
+                        **new_json
+                    }
+                    
+                if new_access_groups:
+                    updated_doc = {
+                        **updated_doc,
+                        'access_groups': new_access_groups,
+                    }
 
-        return OKResponse(detail=f'Successfully updated Document {new_path}', data=new_path)
+                if new_path:
+                    updated_doc = {
+                        **old_doc,
+                        'doc_path': new_path
+                    }
+                    
+                jsonschema.validate(updated_doc, self.doc_schemata[collection])
+                collection.insert_one({ '_id': new_path }, updated_doc) # Will raise a DuplicateKey error if already existant
+                collection.delete_one({ '_id': old_path })
+
+        doc_path = new_path or old_path
+        return OKResponse(detail=f'Successfully updated Document {doc_path}', data=doc_path)
 
 
     # TEST THIS FUNCTION
