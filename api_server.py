@@ -60,6 +60,12 @@ def get_company_middleware(company_id):
 
 app = FastAPI()
 app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    VerifySourceMiddleware,
+    allowed_ips=MIDDLEWARE_CONFIG["allowed_ips"],
+    api_key=MIDDLEWARE_CONFIG["api_key"],
+    exempt_paths=['/chat']
+)
 
 @app.post("/create")
 async def add_doc(req: AddDocRequest):
