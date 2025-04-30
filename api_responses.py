@@ -19,7 +19,11 @@ class AccessNotFoundError(HTTPException):
         self.file_path = file_path
 
 class InsufficientAccessError(HTTPException):
-    def __init__(self, user_access_role, file_path, detail='Insufficient access rights, permission denied'):
+    def __init__(self, user_access_role, detail='Insufficient access rights, permission denied'):
         super().__init__(status_code=403, detail=detail)
         self.user_access_role = user_access_role
+
+class InsufficientFileAccessError(InsufficientAccessError):
+    def __init__(self, user_access_role, file_path, detail='Insufficient file access rights, permission denied'):
+        super().__init__(user_access_role, detail)
         self.file_path = file_path

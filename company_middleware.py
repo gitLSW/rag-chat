@@ -10,10 +10,16 @@ class CompanyMiddleware:
         self.access_manger = AccessManager(company_id)
         self.path_normalizer = PathNormalizer(company_id)
 
+    
+    def add_doc_schema(self, user_access_role, new_doc_type, json_schema):
+        if user_access_role != 'admin':
+            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+        return self.rag_service.add_json_schema_type(new_doc_type, json_schema)
+    
 
-    async def add_doc(self, source_path, access_groups, user_access_role, dest_path=None, doc_type=None):
+    async def add_doc(self, source_path, access_groups, user_access_role, dest_path=None, doc_type=None, doc_json=None):
         # Access gets verified and created in add_doc function
-        return await self.rag_service.add_doc(source_path, access_groups, user_access_role, dest_path, doc_type)
+        return await self.rag_service.add_doc(source_path, access_groups, user_access_role, dest_path, doc_type, doc_json)
     
         
     def update_doc(self, old_path, user_access_role, new_path=None, new_json=None, new_access_groups=None):
@@ -52,7 +58,7 @@ class CompanyMiddleware:
         for doc_data in found_docs_data:
             try:
                 self.access_manger.has_file_access(doc_data['doc_path'], user_access_role)
-            except InsufficientAccessError as e:
+            except InsufficientFileAccessError as e:
                 continue
 
             valid_docs_data.append(doc_data)

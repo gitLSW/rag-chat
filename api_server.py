@@ -25,9 +25,15 @@ PUBLIC_KEY_URL = os.getenv('PUBLIC_KEY_SOURCE_URL')
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
 
+class AddDocSchema(BaseModel):
+    doc_type: str
+    json_schema: dict
+
+
 class AddDocRequest(BaseModel):
     path: Optional[str] = None
-    doc_type: Optional[str] = None
+    doc_type: Optional[str] = None # if doc_json exists, doc_type must exist as well
+    doc_json: Optional[dict] = None
     new_doc_access_groups: List[str]
     file: UploadFile = File(...)
 
@@ -56,7 +62,7 @@ class RAGRequest(BaseModel):
 company_mw_cache = {}
 def get_company_middleware(company_id):
     company_mw = company_mw_cache.get(company_id)
-    if company_mw is not None:
+    if company_mw:
         return company_mw
     
     company_mw = CompanyMiddleware(company_id)
@@ -77,6 +83,13 @@ app.add_middleware(
     allowed_ips=API_ALLOWED_IPs,
     exempt_paths={'/chat'}
 )
+
+
+@app.post("/create")
+async def add_doc(req: AddDocSchema):
+    company_mw = get_company_middleware(req.state.company_id)
+    company_mw.add_doc_schema(req.state.user_role, req.doc_type, req.json_schema)
+
 
 @app.post("/create")
 async def add_doc(req: AddDocRequest):
@@ -105,7 +118,7 @@ async def add_doc(req: AddDocRequest):
         buffer.write(await req.file.read())
 
     # Add document logic
-    res = await company_mw.add_doc(source_path, req.path, req.new_doc_access_groups, req.state.user_role, req.doc_type)
+    res = await company_mw.add_doc(source_path, req.path, req.new_doc_access_groups, req.state.user_role, req.doc_type, req.doc_json)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed

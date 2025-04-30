@@ -22,7 +22,7 @@ class OCR:
 
 
     def extract_pdf_data(self, path, page_index=None):
-        if page_index is not None:
+        if page_index:
             pages = DocumentFile.from_pdf(path, page_indices=[page_index])
         else:
             pages = DocumentFile.from_pdf(path)

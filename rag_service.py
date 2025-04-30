@@ -57,7 +57,7 @@ class RAGService:
         self.json_db = client[company_id]
 
 
-    def add_json_schema_type(self, json_schema, new_doc_type):
+    def add_json_schema_type(self, new_doc_type, json_schema):
         if new_doc_type in self.doc_schemata.keys():
             raise ValueError(f'The document type {new_doc_type}, is already used by another JSON schema')
 
@@ -72,7 +72,7 @@ class RAGService:
         return OKResponse(f'Successfully added new JSON schema for {new_doc_type}')
 
 
-    async def add_doc(self, source_path, access_groups, user_access_role, dest_path=None, doc_type=None):
+    async def add_doc(self, source_path, access_groups, user_access_role, dest_path=None, doc_type=None, doc_json=None):
         """
         Reads a PDF file from the given path and runs OCR to extract structured content.
         Saves the conent as a .txt file in the same location
@@ -99,7 +99,19 @@ class RAGService:
         dest_path = self.access_manager.create_file_access(dest_path, access_groups, user_access_role, allow_override)
 
         # Extract JSON and create or overwrite in DB
-        filled_json, doc_type, is_json_complete = await self.extract_json(doc_text, doc_type)
+        if doc_json is None:
+            filled_json, doc_type, is_json_complete = await self.extract_json(doc_text, doc_type)
+        elif doc_type is None:
+            raise HTTPException(400, 'If new_json exists, doc_type cannot be None')
+        else:
+            if doc_json is str:
+                doc_json = json.loads(doc_json)
+
+            doc_schema = self.doc_schemata.get(doc_type)
+            if doc_schema is None:
+                raise HTTPException(422, f'No schema was found for doc_type {doc_type}. Please register your schema first')
+            jsonschema.validate(doc_json, doc_schema) # raises an exception if invalid
+
         doc_json_collection = self.json_db[doc_type]
         if doc_type and is_json_complete:
             doc_json_collection.replace_one({ '_id': dest_path }, {
