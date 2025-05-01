@@ -74,7 +74,7 @@ app.add_middleware(
     VerifySourceMiddleware,
     api_key=API_KEY,
     allowed_ips=API_ALLOWED_IPs,
-    exempt_paths={'/chat', '/search'}
+    exempt_paths={'/chat'}
 )
 
 
