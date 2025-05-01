@@ -45,7 +45,7 @@ class DeleteDocReq(BaseModel):
 
 class SemanticSearchReq(BaseModel):
     question: str
-    search_depth: int = 10
+    searchDepth: int = 10
 
 
 # -----------------------------
@@ -150,7 +150,7 @@ async def websocket_query(websocket: WebSocket):
         # Receive the chat message payload (should contain question and optional search_depth)
         data = await websocket.receive_json()
         question = data.get("question")
-        search_depth = data.get("search_depth", 10)
+        search_depth = data.get("searchDepth", 10)
 
         # Stream tokens from the RAG pipeline
         async for token in rag_service.query_llm(question, search_depth, user_role, stream=True):
