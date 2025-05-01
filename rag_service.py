@@ -8,11 +8,10 @@ from pymongo import MongoClient
 from filelock import FileLock
 import asyncio
 import aiofiles
-from api_responses import OKResponse
+from api_responses import *
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
-from path_normalizer import PathNormalizer
 from access_manager import AccessManager
 from vllm import SamplingParams
 import jsonschema
@@ -20,6 +19,21 @@ from fastapi import HTTPException
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
+
+BASE_DOC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "path": {"type": "string"},
+        "docType": {"type": "string"},
+        "accessGroups": {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+    },
+    "required": ["id", "path", "docType", "accessGroups"]
+}
+
 
 class RAGService:
     # Initialize persistent vector database (ChromaDB)
@@ -42,8 +56,6 @@ class RAGService:
         """
         self.company = company_id
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
-        # self.doc_path_classifier = DocPathClassifier(company_id)
-        self.path_normalizer = PathNormalizer(company_id)
         self.doc_path_classifier = DocPathClassifier(company_id)
         self.access_manager = AccessManager(company_id)
 
@@ -54,73 +66,75 @@ class RAGService:
         client = MongoClient("mongodb://localhost:27017/")
 
         # Create or connect to database
-        self.json_db = client[company_id]
+        self.json_db = client[company_id]['docs']
 
 
-    def add_json_schema_type(self, new_doc_type, json_schema):
-        if new_doc_type in self.doc_schemata.keys():
-            raise ValueError(f'The document type {new_doc_type}, is already used by another JSON schema')
+    def add_json_schema_type(self, doc_type, json_schema, user_access_role):
+        if user_access_role != 'admin':
+            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+        
+        if doc_type in self.doc_schemata.keys():
+            raise ValueError(f'The document type {doc_type}, is already used by another JSON schema')
+        
+        json_type = json_schema.get('type')
+        if not json_type or json_type != 'object':
+            raise ValueError('The JSON schema must be an object type')
 
         jsonschema.Draft7Validator.check_schema(json_schema) # will raise jsonschema.exceptions.SchemaError if invalid
         
         lock = FileLock(self.schemata_path)
         with lock:
-            self.doc_schemata[new_doc_type] = json_schema
+            self.doc_schemata[doc_type] = json_schema
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(json.dumps(self.doc_schemata))
         
-        return OKResponse(f'Successfully added new JSON schema for {new_doc_type}')
+        return OKResponse(f'Successfully added new JSON schema for {doc_type}', data=json_schema)
 
 
-    async def add_doc(self, source_path, access_groups, user_access_role, dest_path=None, doc_type=None, doc_json=None):
-        """
-        Reads a PDF file from the given path and runs OCR to extract structured content.
-        Saves the conent as a .txt file in the same location
-        Then it adds its paragraphs and their embeddings to the vector database.
+    async def add_doc(self, source_path, doc_data, user_access_role):
+        doc_id = doc_data.get('id')
+        if not doc_id:
+            raise HTTPException(400, 'docData must contain an "id"')
+        
+        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+        if os.path.exists(txt_path):
+            raise HTTPException(409, f"Document {doc_id} already exists. Overrides aren't permitted!")
 
-        Args:
-            path (str): Path to the document file (PDF).
+        access_groups = doc_data.get('accessGroups')
+        if not access_groups:
+            raise HTTPException(400, 'docData must contain a "accessGroups" list')
+        
+        # Validate user access and create if necessary
+        self.access_manager.create_doc_access(doc_id, access_groups, user_access_role)
 
-        Returns:
-            None
-        """
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path)
-
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         
-        # Sort Document into path
-        allow_override = True
-        if dest_path is None:
+        # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
+        if not doc_data.get('path'):
+            # Classify Document into a path if non existant
             file_name = source_path.split('/')[-1] # Last element
-            dest_path = self.doc_path_classifier.classify_doc(doc_text) + file_name
-            allow_override = False
+            doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + file_name
+
+        # Extract JSON
+        doc_type = doc_data.get('docType')
+        extracted_doc_data, doc_type, doc_schema, _ = await self.extract_json(doc_text, doc_type)
         
-        # Create access to the new path
-        dest_path = self.access_manager.create_file_access(dest_path, access_groups, user_access_role, allow_override)
+        if not doc_type:
+            raise HTTPException(500, 'docType was not provided and could not automatically be identifed')
+        
+        if not doc_schema:
+            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema at /createDocSchema first')
 
-        # Extract JSON and create or overwrite in DB
-        if doc_json is None:
-            filled_json, doc_type, is_json_complete = await self.extract_json(doc_text, doc_type)
-        elif doc_type is None:
-            raise HTTPException(400, 'If new_json exists, doc_type cannot be None')
-        else:
-            if doc_json is str:
-                doc_json = json.loads(doc_json)
+        # Build final schema
+        doc_schema = self._merge_with_base_schema(doc_schema)
 
-            doc_schema = self.doc_schemata.get(doc_type)
-            if doc_schema is None:
-                raise HTTPException(422, f'No schema was found for doc_type {doc_type}. Please register your schema first')
-            jsonschema.validate(doc_json, doc_schema) # raises an exception if invalid
-
-        doc_json_collection = self.json_db[doc_type]
-        if doc_type and is_json_complete:
-            doc_json_collection.replace_one({ '_id': dest_path }, {
-                    'doc_path': dest_path,
-                    'access_groups': access_groups,
-                    **filled_json
-                }, upsert=True)
-        else: # or delete a doc if it was overwritten with a new doc from which no data was extracted
-            doc_json_collection.delete_one({ '_id': dest_path })
+        # Check if doc_data is valid and insert into DB
+        if extracted_doc_data:
+            doc_data = { **extracted_doc_data, **doc_data }
+        print(doc_data)
+        jsonschema.validate(doc_data, doc_schema)
+        self.json_db.insert_one({ '_id': doc_id }, doc_data, upsert=True)
 
         # Load and process PDF file using OCR
         for page_num, paragraph in paragraphs:
@@ -132,109 +146,71 @@ class RAGService:
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
                 metadatas=[{
-                    'doc_path': dest_path,
+                    'doc_id': doc_id,
                     'page_num': page_num,
                     'doc_type': doc_type
                 }]
             )
 
         # Save the extracted content in .txt file
-        txt_path = self.path_normalizer.get_full_company_path(dest_path) + '.txt'
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(doc_text)
 
-        return OKResponse(detail=f'Successfully processed Document', data={
-            'doc_path': dest_path,
-            'extracted_json': filled_json,
-            'is_json_extract_complete': is_json_complete
-        })
+        return OKResponse(detail=f'Successfully processed Document', data=doc_data)
 
 
     # TEST THIS FUNCTION
-    def update_doc(self, old_path, new_path=None, new_json=None, new_access_groups=None):
-        if new_json and new_json is str:
-            new_json = json.loads(new_json)
-
-        if new_path:
-            # Convert PDF paths to TXT paths
-            old_txt_path = self.path_normalizer.get_full_company_path(old_path) + '.txt'
-            new_txt_path = self.path_normalizer.get_full_company_path(new_path) + '.txt'
-            
-            if os.path.exists(new_txt_path):
-                raise FileExistsError()
-
-            # Perform the file move/rename
-            os.rename(old_txt_path, new_txt_path) # TODO: Check if this raises an exception, it should
+    def update_doc_data(self, doc_data, user_access_role):
+        doc_id = doc_data.get('id')
+        if not doc_id:
+            raise HTTPException(400, 'docData must contain an "id"')
         
-        # Update ChromaDB metadata
-        doc_entries = self.vector_db.get(where={'doc_path': old_path})
+        # Validate user access and update if necessary
+        new_access_groups = doc_data.get('accessGroups')
+        self.access_manger.update_doc_access(doc_id, new_access_groups, user_access_role)
         
-        if new_path:
-            for doc_id in doc_entries["ids"]:
-                # Preserve all existing metadata, only update the path
-                current_metadata = self.vector_db.get(ids=[doc_id])["metadatas"][0]
-                updated_metadata = {
-                    **current_metadata,  # Keep all existing metadata
-                    'doc_path': new_path  # Only update the path
-                }
-                self.vector_db.update(
-                    ids=[doc_id],
-                    metadatas=[updated_metadata]
-                )
-            
-        if new_path or new_json or new_access_groups:
-            for collection_name in self.json_db.list_collection_names():
-                collection = self.json_db[collection_name]
-                old_doc = collection.find_one({ '_id': old_path })
-                if old_doc is None:
-                    continue
-                
-                if new_json:
-                    updated_doc = {
-                        **updated_doc,
-                        **new_json
-                    }
-                    
-                if new_access_groups:
-                    updated_doc = {
-                        **updated_doc,
-                        'access_groups': new_access_groups,
-                    }
+        old_doc = self.json_db.find_one({ '_id': doc_id })
+        updated_doc = { **old_doc, **doc_data }
+        
+        doc_type = updated_doc.get('docType')
+        if not doc_type:
+            raise HTTPException(500, 'docType was not provided and could not automatically be identifed')
+        
+        doc_schema = self.doc_schemata.get(doc_type)
+        if not doc_schema:
+            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema at /createDocSchema first')
 
-                if new_path:
-                    updated_doc = {
-                        **old_doc,
-                        'doc_path': new_path
-                    }
-                    
-                jsonschema.validate(updated_doc, self.doc_schemata[collection])
-                collection.insert_one({ '_id': new_path }, updated_doc) # Will raise a DuplicateKey error if already existant
-                collection.delete_one({ '_id': old_path })
+        doc_schema = self._merge_with_base_schema(doc_schema)
+        
+        # Validate and replace
+        jsonschema.validate(updated_doc, doc_schema)
+        self.json_db.replace_one({ '_id': doc_id }, updated_doc)
 
-        doc_path = new_path or old_path
-        return OKResponse(detail=f'Successfully updated Document {doc_path}', data=doc_path)
+        return OKResponse(detail=f'Successfully updated Document {doc_id}', data=updated_doc)
 
 
     # TEST THIS FUNCTION
-    def delete_doc(self, path):
-        txt_path = self.path_normalizer.get_full_company_path(path) + '.txt'
-        
+    def delete_doc(self, doc_id, user_access_role):
+        # Validate user access and delete if necessary
+        self.access_manger.delete_doc_access(doc_id, user_access_role)
+
+        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+
         # Delete file
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
-        
+
+        # Delete from vector DB
+        self.vector_db.delete(where={ 'doc_id': doc_id })
+
         # Delete from json DB
-        for collection_name in self.json_db.list_collection_names():
-            self.json_db[collection_name].delete_one({ '_id': path })
+        doc_data = self.json_db.delete_one({ '_id': doc_id })
 
-        # Delete from ector DB
-        self.vector_db.delete(where={'doc_path': path})
-
-        return OKResponse(detail=f'Successfully deleted Document {path}', data=path)
+        return OKResponse(detail=f'Successfully deleted Document {doc_id}', data=doc_data)
     
 
-    def find_docs(self, question, n_results):
+    def find_docs(self, question, n_results, user_access_role):
         """
         Retrieves the most relevant document chunks for a given question using semantic search between question and known paragraphs
 
@@ -243,7 +219,7 @@ class RAGService:
             n_results (int): Number of top-matching results to return.
 
         Returns:
-            list: Metadata entries (paths and pages) for the top matches.
+            list: Metadata entries (doc_id, pages and doc_type) for the top matches.
         """
         # Convert user question into an embedding vector
         question_embedding = RAGService.embedding_model.encode(question).tolist()
@@ -252,10 +228,20 @@ class RAGService:
         
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
-        return nearest_neighbors
+
+        valid_docs_data = []
+        for doc_data in nearest_neighbors:
+            try:
+                self.access_manger.has_doc_access(doc_data['id'], user_access_role)
+            except InsufficientAccessError as e:
+                continue
+
+            valid_docs_data.append(doc_data)
+
+        return valid_docs_data
 
     
-    async def query_llm(self, question, docs_data, stream=False):
+    async def query_llm(self, question, n_results, user_access_role, stream=False):
         """
         Answers a user question by retrieving relevant document content and querying a local LLM.
 
@@ -265,8 +251,10 @@ class RAGService:
         Returns:
             str: Final LLM-generated answer with source references.
         """
-        async def _load_and_summarize_doc(rel_doc_path):
-            txt_path = self.path_normalizer.get_full_company_path(rel_doc_path) + '.txt'
+        docs_data = self.find_docs(question, n_results, user_access_role)
+
+        async def _load_and_summarize_doc(doc_id):
+            txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
             async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
                 doc_text = await f.read()
 
@@ -278,21 +266,22 @@ class RAGService:
         doc_types = set()
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            rel_doc_path = doc_data['doc_path']
+            doc_id = doc_data['doc_id']
             page_num = doc_data['page_num']
             doc_types.add(doc_data['doc_type'])
 
             if page_num is None:
-                doc_sources_map[rel_doc_path] = None
+                doc_sources_map[doc_id] = None
             else:
-                doc_sources_map[rel_doc_path].add(page_num)
+                doc_sources_map[doc_id].add(page_num)
             
-            summarize_tasks.append(_load_and_summarize_doc(rel_doc_path))
+            summarize_tasks.append(_load_and_summarize_doc(doc_id))
 
         # Compose source references
         sources_info = 'Consult these documents for more detail:\n'
-        for doc_path, pages in doc_sources_map.items():
-            sources_info += doc_path
+        for doc_id, pages in doc_sources_map.items():
+            doc_pseudo_path = self.json_db.find_one({ '_id': doc_id }).get('path')
+            sources_info += doc_pseudo_path
             if pages is None:
                 sources_info += '\n'
             else:
@@ -307,15 +296,15 @@ class RAGService:
             clean_summary = re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)
             prompt += '\n\n' + clean_summary
 
+        # Attach MongoDB to prompt
+        prompt += '\n\n\nYou have read-only access to the Mongo database. These are the JSON schemata for each MongoDB collection:'
+
+        for doc_type in doc_types:
+            prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
+        
+        prompt += '\n\nIf you want to query the MongoDB, write a mongosh query in tags like so: ```mongosh YOUR COMMAND ```'
+
         if not stream:
-            # Attach MongoDB to prompt
-            prompt += '\n\n\nYou have read-only access to the Mongo database. These are the JSON schemata for each MongoDB collection:'
-
-            for doc_type in doc_types:
-                prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
-            
-            prompt += '\n\nIf you want to query the MongoDB, write a mongosh query in tags like so: ```mongosh YOUR COMMAND ```'
-
             # Final prompt to answer the question (still single prompt)
             answer = await RAGService.llm_service.query(prompt, stream=False)
 
@@ -329,9 +318,18 @@ class RAGService:
             
             return OKResponse(data={ 'llm_response': sources_info + answer_text })
         
-        # TODO: HOW TO ADD MONGO DB TO THIS ?!
         # Stream LLM response tokens over the WebSocket
+        answer = ''
+        mongosh_found = False
         async for chunk in RAGService.llm_service.query(prompt, stream=True):
+            answer += chunk
+
+            # Extract mongosh commands if existant
+            if not mongosh_found:
+                mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
+                if mongosh_commands:
+                    self.mongosh_service.run(mongosh_commands)
+
             yield chunk
     
 
@@ -346,15 +344,17 @@ class RAGService:
         Returns:
             tuple:
                 - dict: The parsed JSON object.
+                - str: The document Type
+                - dict: The JSON schema used to validate it
                 - bool: Whether all schema fields were filled.
         """
-        if doc_type is None:
-            json_schema, doc_type = RAGService.identify_doc_json(text)
+        if doc_type:
+            json_schema = self.doc_schemata.get(doc_type)
         else:
-            json_schema = self.doc_schemata[doc_type] # raises Error if doc_type is invalid
+            json_schema, doc_type = self._identify_doc_json(text)
 
-        if doc_type is None:
-            return None, None, False
+        if not json_schema:
+            return None, doc_type, json_schema, False
 
         sampling_params = SamplingParams(
             temperature=0.1,
@@ -395,16 +395,15 @@ class RAGService:
             answer_json = re.search(r"```json\s*(.*?)\s*```", res, re.DOTALL).group(1)
             parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
-            return parsed_json, doc_type, True
+            return parsed_json, doc_type, json_schema, True
         except jsonschema.exceptions.ValidationError as e:
-            return parsed_json, doc_type, False
+            return parsed_json, doc_type, json_schema, False
         except (IndexError, json.JSONDecodeError) as e:
             print(f"Failed to extract or parse JSON from model response: {e}")
-            return None, doc_type, False
+            return None, doc_type, json_schema, False
     
 
-    @staticmethod
-    def identify_doc_json(self, paragraphs):
+    def _identify_doc_type(self, paragraphs):
         from collections import defaultdict
 
         # Precompute schema embeddings
@@ -448,6 +447,14 @@ class RAGService:
         final_type = max(normalized_scores.items(), key=lambda x: x[1])[0]
 
         return self.doc_schemata[final_type], final_type
+    
+
+    def _merge_with_base_schema(self, json_schema):
+        return {
+            "type": "object",
+            "properties": {**json_schema.get("properties", {}), **BASE_DOC_SCHEMA["properties"]},
+            "required": list(set(BASE_DOC_SCHEMA["required"] + json_schema.get("required", [])))
+        }
 
 
 # company = 'MyCompany'

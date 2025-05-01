@@ -59,9 +59,9 @@ class DocExtractor:
                 # Run OCR on the image-containing page
                 ocr_page_data = DocExtractor.ocr.extract_pdf_data(file_path, i)
                 for block in ocr_page_data.blocks:
-                    block_text = OCR._convert_block_data_to_text(block)
-                    if block_text.strip():
-                        paragraphs.append((page_num, block_text.strip()))
+                    paragraph = OCR._convert_block_data_to_paragraph(block)
+                    if paragraph.strip():
+                        paragraphs.append((page_num, paragraph.strip()))
             else:
                 # Extract regular text
                 text = page.get_text().strip()

@@ -5,10 +5,10 @@ from path_normalizer import merge_path
 from mimetypes import guess_type
 from doc_extractor import DocExtractor
 from api_responses import *
-from fastapi import FastAPI, HTTPException, File, UploadFile, WebSocket
+from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket
 from pydantic import BaseModel
-from typing import List, Optional
-from company_middleware import CompanyMiddleware
+# from typing import List, Optional
+from rag_service import RAGService
 from auth_middleware import AuthMiddleware
 from verify_source_middlware import VerifySourceMiddleware
 
@@ -25,49 +25,41 @@ PUBLIC_KEY_URL = os.getenv('PUBLIC_KEY_SOURCE_URL')
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
 
-class AddDocSchema(BaseModel):
-    doc_type: str
-    json_schema: dict
+class AddDocSchemaReq(BaseModel):
+    docType: str
+    docSchema: dict # JSON Schema
 
-
-class AddDocRequest(BaseModel):
-    path: Optional[str] = None
-    doc_type: Optional[str] = None # if doc_json exists, doc_type must exist as well
-    doc_json: Optional[dict] = None
-    new_doc_access_groups: List[str]
+class AddDocReq(BaseModel):
     file: UploadFile = File(...)
+    doc_data: dict # = {
+    #     id: str
+    #     path: Optional[str] = None
+    #     docType: Optional[str] = None
+    #     accessGroups: List[str]
+    #     # more fields for the doc_data, which are doc_type's JSON Schema
+    # }
 
+class DeleteDocReq(BaseModel):
+    id: str
 
-class UpdateDocRequest(BaseModel):
-    old_path: str
-    new_path: Optional[str] = None
-    new_doc_json: Optional[dict] = None
-    new_access_groups: Optional[List[str]] = None
-
-
-class DeleteDocRequest(BaseModel):
-    path: str
-
-
-class RAGRequest(BaseModel):
+class SemanticSearchReq(BaseModel):
     question: str
     search_depth: int = 10
-
 
 
 # -----------------------------
 # Helper to Init Company Server
 # -----------------------------
 
-company_mw_cache = {}
-def get_company_middleware(company_id):
-    company_mw = company_mw_cache.get(company_id)
-    if company_mw:
-        return company_mw
+rag_service_cache = {}
+def get_company_rag_service(company_id):
+    rag_service = rag_service_cache.get(company_id)
+    if rag_service:
+        return rag_service
     
-    company_mw = CompanyMiddleware(company_id)
-    company_mw_cache[company_id] = company_mw
-    return company_mw
+    rag_service = RAGService(company_id)
+    rag_service_cache[company_id] = rag_service
+    return rag_service
     
 
 
@@ -85,14 +77,14 @@ app.add_middleware(
 )
 
 
-@app.post("/create")
-async def add_doc(req: AddDocSchema):
-    company_mw = get_company_middleware(req.state.company_id)
-    company_mw.add_doc_schema(req.state.user_role, req.doc_type, req.json_schema)
+@app.post("/createDocSchema")
+async def create_doc_schema(req: Request):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
 
 @app.post("/create")
-async def add_doc(req: AddDocRequest):
+async def create_doc(req: AddDocReq):
     mime_type, _ = guess_type(req.file.filename)
 
     # Check if MIME type is supported by DocExtractor
@@ -102,9 +94,6 @@ async def add_doc(req: AddDocRequest):
             status_code=400,
             detail=f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}"
         )
-    
-    # Initialize the access middleware
-    company_mw = get_company_middleware(req.state.company_id)
     
     # Ensure the directory exists
     upload_dir = f'{req.state.company_id}/uploads/{uuid.uuid4()}'
@@ -117,8 +106,9 @@ async def add_doc(req: AddDocRequest):
     with open(source_path, "wb") as buffer:
         buffer.write(await req.file.read())
 
-    # Add document logic
-    res = await company_mw.add_doc(source_path, req.path, req.new_doc_access_groups, req.state.user_role, req.doc_type, req.doc_json)
+    # Add and process doc
+    rag_service = get_company_rag_service(req.state.company_id)
+    res = await rag_service.add_doc(source_path, req.docData, req.state.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
@@ -127,29 +117,30 @@ async def add_doc(req: AddDocRequest):
 
 
 @app.post("/update")
-def update_doc(req: UpdateDocRequest):
-    company_mw = get_company_middleware(req.state.company_id)
-    return company_mw.update_doc(req.old_path, req.state.user_role, req.new_path, req.new_doc_json, req.new_access_groups)
+async def update_doc(req: Request):
+    rag_service = get_company_rag_service(req.state.company_id)
+    doc_data = await req.json()
+    return rag_service.update_doc(doc_data, req.state.user_role)
 
 
 @app.post("/delete")
-def delete_doc(req: DeleteDocRequest):
-    company_mw = get_company_middleware(req.state.company_id)
-    return company_mw.delete_doc(req.path, req.state.user_role)
+async def delete_doc(req: DeleteDocReq):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.delete_doc(req.id, req.state.user_role)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
 @app.post("/search")
-def search_docs(req: RAGRequest):
-    company_mw = get_company_middleware(req.state.company_id)
-    return company_mw.search_docs(req.question, req.state.user_role, req.search_depth)
+async def search_docs(req: SemanticSearchReq):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.find_docs(req.question, req.search_depth, req.state.user_role)
 
 
 @app.websocket("/chat")
 async def websocket_query(websocket: WebSocket):
     company_id = websocket.scope["state"].company_id
     user_role = websocket.scope["state"].user_role
-    company_mw = get_company_middleware(company_id)
+    rag_service = get_company_rag_service(company_id)
     
     while True:
         # Accept the WebSocket connection
@@ -161,7 +152,7 @@ async def websocket_query(websocket: WebSocket):
         search_depth = data.get("search_depth", 10)
 
         # Stream tokens from the RAG pipeline
-        async for token in company_mw.query_llm(question, user_role, search_depth, stream=True):
+        async for token in rag_service.query_llm(question, search_depth, user_role, stream=True):
             await websocket.send_text(token)
     
 

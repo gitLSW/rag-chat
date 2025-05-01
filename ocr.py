@@ -30,7 +30,7 @@ class OCR:
 
 
     @staticmethod
-    def _convert_block_data_to_text(block_data):
+    def _convert_block_data_to_paragraph(block_data):
         lines = []
         for line in block_data.lines:
             # Join words with spaces and strip trailing whitespace
@@ -44,24 +44,3 @@ class OCR:
             
         # Join processed lines with single space
         return " ".join(lines)
-
-
-    @staticmethod
-    def _convert_doc_data_to_text(doc_data):
-        """
-        Converts an OCR document into plain text.
-
-        Args:
-            block_data: A doc object from docTR OCR output.
-
-        Returns:
-            str: Text content from the document.
-        """
-        blocks = []
-        for page in doc_data.pages:
-            for block in page.blocks:
-                block_text = OCR._convert_block_data_to_text(block)
-                blocks.append(block_text)
-    
-        # Separate text blocks within a document
-        return "\n\n".join(blocks)
