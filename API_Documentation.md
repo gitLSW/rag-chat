@@ -71,7 +71,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 ```
 
 #### 3. `POST /updateDocument`
-- **Purpose**: Updates an existing document's metadata (uses same schema as `/addDocument`'s doc_data).
+- **Purpose**: Updates an existing document's metadata.
 - **Request Schema**: Same as `/addDocument`'s `doc_data` property.
 ```json
 {
