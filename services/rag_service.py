@@ -1,21 +1,25 @@
-from collections import defaultdict
-from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
-import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 import re
 import os
 import json
-from pymongo import MongoClient
+from collections import defaultdict
+
 from filelock import FileLock
 import asyncio
 import aiofiles
-from api_responses import *
+
+import jsonschema
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
+
+from pymongo import MongoClient
+import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
+from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
+
+from vllm import SamplingParams
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
 from access_manager import AccessManager
-from vllm import SamplingParams
-import jsonschema
-from fastapi import HTTPException
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -33,6 +37,16 @@ BASE_DOC_SCHEMA = {
     },
     "required": ["id", "path", "docType", "accessGroups"]
 }
+
+
+class OKResponse(JSONResponse):
+    def __init__(self, detail='Success', data=None):
+        self.data = data
+        self.detail = detail
+        super().__init__(status_code=200, content=json.dumps({
+            "detail": detail,
+            "data": json.dumps(data)
+        }))
 
 
 class RAGService:

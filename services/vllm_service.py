@@ -1,9 +1,8 @@
-import asyncio
+import os
+from dotenv import load_dotenv
+from openai import AsyncOpenAI as AsyncClient
 from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
-import os
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +25,7 @@ class LLMService:
         Initializes the vLLM LLM instance.
         """
         self.model = LLM_MODEL
-        self.client = AsyncOpenAI(  # Use async client
+        self.client = AsyncClient(  # Use async client
             base_url=vllm_url.rstrip('/') + "/v1",
             api_key="token-abc123"
         )

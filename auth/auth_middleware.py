@@ -1,10 +1,9 @@
-# auth_middleware.py
+import time
+import requests
+from jose import jwt, JWTError
 from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
-import requests
-import time
 
 # PUBLIC_ROUTES = ["/route"]
 

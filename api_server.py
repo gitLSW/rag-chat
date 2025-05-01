@@ -1,16 +1,17 @@
 import os
 import uuid
 from dotenv import load_dotenv
-from path_normalizer import merge_path
+# from typing import List, Optional
+
 from mimetypes import guess_type
-from doc_extractor import DocExtractor
-from api_responses import *
+
 from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket
 from pydantic import BaseModel
-# from typing import List, Optional
-from rag_service import RAGService
-from auth_middleware import AuthMiddleware
-from verify_source_middlware import VerifySourceMiddleware
+
+from services.rag_service import RAGService
+from services.doc_extractor import DocExtractor
+from auth.auth_middleware import AuthMiddleware
+from auth.verify_source_middlware import VerifySourceMiddleware
 
 # Load environment variables
 load_dotenv()
@@ -100,7 +101,7 @@ async def create_doc(req: AddDocReq):
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
-    source_path = merge_path(upload_dir, req.file.filename)
+    source_path = f'{upload_dir}/{req.file.filename}'
 
     # Save the file
     with open(source_path, "wb") as buffer:

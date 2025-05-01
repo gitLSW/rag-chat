@@ -1,7 +1,18 @@
 import os
 import json
+from fastapi import HTTPException
 from filelock import FileLock
-from api_responses import * 
+
+class AccessNotFoundError(HTTPException):
+    def __init__(self, doc_id, detail='File not found'):
+        super().__init__(status_code=404, detail=detail)
+        self.doc_id = doc_id
+
+class InsufficientAccessError(HTTPException):
+    def __init__(self, user_access_role, doc_id, detail='Insufficient access rights, permission denied'):
+        super().__init__(status_code=403, detail=detail)
+        self.user_access_role = user_access_role
+        self.doc_id = doc_id
 
 class AccessManager:
     def __init__(self, company_id):
