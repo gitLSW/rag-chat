@@ -73,6 +73,38 @@ All endpoints require a Bearer Token authentication and most require an addition
 #### 3. `POST /updateDocument`
 - **Purpose**: Updates an existing document's metadata (uses same schema as `/addDocument`'s doc_data).
 - **Request Schema**: Same as `/addDocument`'s `doc_data` property.
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the document"
+    },
+    "path": {
+      "type": "string",
+      "description": "Optional path for organizing documents",
+      "nullable": true
+    },
+    "docType": {
+      "type": "string",
+      "description": "Document type that matches a predefined schema",
+      "nullable": true
+    },
+    "accessGroups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of groups with access to this document"
+    }
+  },
+  "required": ["id", "accessGroups"],
+  "additionalProperties": {
+    "description": "Additional properties must match the schema defined for the docType"
+  }
+}
+```
 
 #### 4. `POST /deleteDocument`
 - **Purpose**: Deletes a document by its ID.
