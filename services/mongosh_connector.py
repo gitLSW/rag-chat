@@ -3,56 +3,52 @@ import re
 from dotenv import load_dotenv
 import subprocess
 import urllib.parse
+from typing import List, Dict
+from pymongo import MongoClient
 
-# Load environment variables
 load_dotenv()
-# LLM password for all company users
-LLM_USER = os.getenv('LLM_MONGO_USER')
 
-DANGEROUS_JS_PATTERNS = [
-    r"\bwhile\s*\(",
-    r"\bfor\s*\(",
-    r"\beval\s*\(",
-    r"\bfunction\s*\(",
-    r"\bsleep\s*\(",
-    r"new\s+Function",
-    r"load\s*\(",
-    r"system\s*\(",
+DANGEROUS_PATTERNS = [
+    'eval', 'function', 'system', 'load', 'sleep',
+    'while', 'for', 'insert', 'update', 'delete',
+    'remove', 'drop', 'shutdown', 'adminCommand'
 ]
 
-class MongoshConnector:
 
-    def __init__(self, company_id):
+class MongoshConnector:
+    def __init__(self, company_id: str, access_level: int):
         """
-        Initialize the connector for a specific company.
-        Assumes the MongoDB username is 'llm_<company_id>'.
+        Initialize the connector for a specific company and access level.
         """
-        if not self._validate_company_id(company_id):
-            raise ValueError(f"Invalid company_id: {company_id}")
+        if not 0 <= access_level <= 10:
+            raise ValueError("Access level must be between 0 and 10")
 
         self.company_id = company_id
-        
-
-    def run(self, mongosh_cmd):
+        self.access_level = access_level
+        self.username = f"llm_{company_id}_level{access_level}"
+        self.password = os.getenv(f"LLM_{self.company_id}_PW")
+         
+    
+    def run(self, mongosh_cmd: str) -> str:
         """
-        Run a mongosh command for this company's database.
-
+        Run a mongosh command with the appropriate access level restrictions.
+        
         :param mongosh_cmd: MongoDB shell command
         :return: Output or error message
         """
         try:
             self._validate_command(mongosh_cmd)
             
-            username = urllib.parse.quote_plus(LLM_USER.name)
-            password = urllib.parse.quote_plus(LLM_USER.password)
-            uri = f"mongodb://{username}:{password}@localhost:27017/?authSource={self.company_id}"
+            username = urllib.parse.quote_plus(self.username)
+            password = urllib.parse.quote_plus(self.password)
+            uri = f"mongodb://{username}:{password}@localhost:27017/{self.company_id}?authSource=admin"
 
             cmd = [
                 "mongosh",
                 uri,
                 "--quiet",
                 "--eval",
-                f"use {self.company_id}; {mongosh_cmd}"
+                mongosh_cmd
             ]
 
             process = subprocess.run(
@@ -71,18 +67,14 @@ class MongoshConnector:
             return f"Error executing mongosh command: {str(e)}"
 
 
-    def _validate_company_id(self, company_id):
-        # Only allow alphanumeric + underscores
-        return bool(re.fullmatch(r"[a-zA-Z0-9_]+", company_id))
-
-
-    def _validate_command(self, mongosh_cmd):
+    def _validate_command(self, mongosh_cmd: str) -> None:
+        """Validate the command for security."""
         if not isinstance(mongosh_cmd, str):
             raise ValueError("mongosh_cmd must be a string.")
-
         if len(mongosh_cmd) > 5000:
             raise ValueError("mongosh_cmd is too long.")
-
-        for pattern in DANGEROUS_JS_PATTERNS:
-            if re.search(pattern, mongosh_cmd, flags=re.IGNORECASE):
-                raise ValueError(f"Potentially dangerous JavaScript detected: '{pattern}'")
+        
+        # Prevent dangerous operations
+        for cmd in DANGEROUS_PATTERNS:
+            if re.search(rf'\b{cmd}\b', mongosh_cmd, re.IGNORECASE):
+                raise ValueError(f"Potentially dangerous command detected: '{cmd}'")
