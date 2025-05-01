@@ -1,5 +1,7 @@
 ### Endpoint Schema Documentation
 
+All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat` and `/search`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
+
 #### 1. `POST /addDocumentSchema`
 - **Purpose**: Defines a new JSON schema for a specific document type.
 - **Request Schema**:
@@ -129,25 +131,3 @@
   "required": ["question"]
 }
 ```
-
-### Endpoint Descriptions
-
-1. **`POST /addDocumentSchema`**  
-   Defines a custom JSON schema that will validate metadata for specific document types.
-
-2. **`POST /addDocument`**  
-   Uploads a document file along with metadata that must conform to a predefined schema.
-
-3. **`POST /updateDocument`**  
-   Updates an existing document's metadata while enforcing schema validation.
-
-4. **`POST /deleteDocument`**  
-   Removes a document from the system by its unique identifier.
-
-5. **`POST /search`**  
-   Performs semantic search across documents using natural language queries.
-
-6. **`WebSocket /chat`**  
-   Establishes a real-time connection for streaming LLM responses to document queries.
-
-All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat` and `/search`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
