@@ -79,13 +79,13 @@ app.add_middleware(
 
 
 @app.post("/addDocumentSchema")
-async def create_doc_schema(req: Request):
+async def add_doc_schema(req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
 
 @app.post("/addDocument")
-async def create_doc(req: AddDocReq):
+async def add_doc(req: AddDocReq):
     mime_type, _ = guess_type(req.file.filename)
 
     # Check if MIME type is supported by DocExtractor
