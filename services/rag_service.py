@@ -160,9 +160,9 @@ class RAGService:
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
                 metadatas=[{
-                    'doc_id': doc_id,
-                    'page_num': page_num,
-                    'doc_type': doc_type
+                    'docId': doc_id,
+                    'pageNum': page_num,
+                    'docType': doc_type
                 }]
             )
 
@@ -175,7 +175,6 @@ class RAGService:
         return OKResponse(detail=f'Successfully processed Document', data=doc_data)
 
 
-    # TEST THIS FUNCTION
     def update_doc_data(self, doc_data, user_access_role):
         doc_id = doc_data.get('id')
         if not doc_id:
@@ -233,7 +232,7 @@ class RAGService:
             n_results (int): Number of top-matching results to return.
 
         Returns:
-            list: Metadata entries (doc_id, pages and doc_type) for the top matches.
+            list: Metadata entries (doc_id, page_num and doc_type) for the top matches.
         """
         # Convert user question into an embedding vector
         question_embedding = RAGService.embedding_model.encode(question).tolist()
@@ -242,17 +241,18 @@ class RAGService:
         
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
-
-        valid_docs_data = []
+        
+        valid_docs_data = {}
         for doc_data in nearest_neighbors:
             try:
                 self.access_manger.has_doc_access(doc_data['id'], user_access_role)
             except InsufficientAccessError as e:
                 continue
-
+            
+            if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
             valid_docs_data.append(doc_data)
 
-        return valid_docs_data
+        return OKResponse(detail=f'Found {len(valid_docs_data}', data=valid_docs_data)
 
     
     async def query_llm(self, question, n_results, user_access_role, stream=False):
@@ -265,7 +265,7 @@ class RAGService:
         Returns:
             str: Final LLM-generated answer with source references.
         """
-        docs_data = self.find_docs(question, n_results, user_access_role)
+        docs_data = self.find_docs(question, n_results, user_access_role).data
 
         async def _load_and_summarize_doc(doc_id):
             txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
@@ -280,9 +280,9 @@ class RAGService:
         doc_types = set()
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            doc_id = doc_data['doc_id']
-            page_num = doc_data['page_num']
-            doc_types.add(doc_data['doc_type'])
+            doc_id = doc_data['docID']
+            page_num = doc_data['pageNum']
+            doc_types.add(doc_data['docType'])
 
             if page_num is None:
                 doc_sources_map[doc_id] = None
@@ -326,6 +326,7 @@ class RAGService:
             mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
             if mongosh_commands:
                 self.mongosh_service.run(mongosh_commands)
+                # TODO: Return commands in next chat. (Isolate the function into functions to generate the prompt or run the query and then call them as needed)
 
             # Clean out any lingering <think> tags
             answer_text = re.sub(r'<think>.*?</think>', '', answer, flags=re.DOTALL)
@@ -343,6 +344,8 @@ class RAGService:
                 mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
                 if mongosh_commands:
                     self.mongosh_service.run(mongosh_commands)
+                    mongosh_found = True
+                    # TODO: Return commands in next chat. (Isolate the function into functions to generate the prompt or run the query and then call them as needed)
 
             yield chunk
     
