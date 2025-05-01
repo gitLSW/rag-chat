@@ -34,9 +34,9 @@ class AddDocReq(BaseModel):
     file: UploadFile = File(...)
     doc_data: dict # = {
     #     id: str
+    #     accessGroups: List[str]
     #     path: Optional[str] = None
     #     docType: Optional[str] = None
-    #     accessGroups: List[str]
     #     # more fields for the doc_data, which are doc_type's JSON Schema
     # }
 
