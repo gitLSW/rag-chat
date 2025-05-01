@@ -150,4 +150,4 @@
 6. **`WebSocket /chat`**  
    Establishes a real-time connection for streaming LLM responses to document queries.
 
-All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
+All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat` and `/search`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
