@@ -1,6 +1,9 @@
+Here's the complete documentation with added response schemas for each endpoint:
+
 ### Endpoint Schema Documentation
 
-All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat` and `/search`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
+All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
+
 
 #### 1. `POST /addDocumentSchema`
 - **Purpose**: Defines a new JSON schema for a specific document type.
@@ -22,6 +25,34 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["docType", "docSchema"]
 }
 ```
+- **Response Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "detail": {
+      "type": "string",
+      "description": "Success message"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "docType": {"type": "string"},
+          "accessGroups": {
+              "type": "array",
+              "items": {"type": "string"}
+          }
+      },
+      "required": ["id", "path", "docType", "accessGroups"],
+      "description": "The added JSON schema",
+      "additionalProperties": true
+    }
+  }
+}
+```
+
 
 #### 2. `POST /addDocument`
 - **Purpose**: Uploads a document file along with its metadata that must conform to a predefined schema.
@@ -69,6 +100,34 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["file", "doc_data"]
 }
 ```
+- **Response Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "detail": {
+      "type": "string",
+      "description": "Success message"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "docType": {"type": "string"},
+          "accessGroups": {
+              "type": "array",
+              "items": {"type": "string"}
+          }
+      },
+      "required": ["id", "path", "docType", "accessGroups"],
+      "description": "The processed document data including extracted metadata",
+      "additionalProperties": true
+    }
+  }
+}
+```
+
 
 #### 3. `POST /updateDocument`
 - **Purpose**: Updates an existing document's metadata.
@@ -105,6 +164,33 @@ All endpoints require a Bearer Token authentication and most require an addition
   }
 }
 ```
+- **Response Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "detail": {
+      "type": "string",
+      "description": "Success message"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "docType": {"type": "string"},
+          "accessGroups": {
+              "type": "array",
+              "items": {"type": "string"}
+          }
+      },
+      "required": ["id", "path", "docType", "accessGroups"],
+      "description": "The updated document data",
+      "additionalProperties": true
+    }
+  }
+}
+```
 
 #### 4. `POST /deleteDocument`
 - **Purpose**: Deletes a document by its ID.
@@ -119,6 +205,33 @@ All endpoints require a Bearer Token authentication and most require an addition
     }
   },
   "required": ["id"]
+}
+```
+- **Response Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "detail": {
+      "type": "string",
+      "description": "Success message"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "docType": {"type": "string"},
+          "accessGroups": {
+              "type": "array",
+              "items": {"type": "string"}
+          }
+      },
+      "required": ["id", "path", "docType", "accessGroups"],
+      "description": "The deleted document data",
+      "additionalProperties": true
+    }
+  }
 }
 ```
 
@@ -142,9 +255,39 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["question"]
 }
 ```
+- **Response Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "detail": {
+      "type": "string",
+      "description": "Number of found documents"
+    },
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "docId": {"type": "string"},
+          "pageNum": {
+            "type": "integer",
+            "description": "Page number where match was found",
+            "nullable": true
+          },
+          "docType": {
+            "type": "string",
+            "description": "Document's JSON schema type"
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 #### 6. `WebSocket /chat`
-- **Purpose**: Streams LLM responses to queries in real-time.
+- **Purpose**: Opens a web socket connection, which streams the LLM response as chunks in real-time.
 - **Request Schema**:
 ```json
 {
@@ -163,3 +306,4 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["question"]
 }
 ```
+- **Response Schema**: It uses a web socket connection.
