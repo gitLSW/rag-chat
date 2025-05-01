@@ -280,7 +280,7 @@ class RAGService:
         doc_types = set()
         doc_sources_map = defaultdict(set)
         for doc_data in docs_data:
-            doc_id = doc_data['docID']
+            doc_id = doc_data['docId']
             page_num = doc_data['pageNum']
             doc_types.add(doc_data['docType'])
 
