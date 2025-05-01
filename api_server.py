@@ -78,13 +78,13 @@ app.add_middleware(
 )
 
 
-@app.post("/createDocSchema")
+@app.post("/addDocumentSchema")
 async def create_doc_schema(req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
 
-@app.post("/create")
+@app.post("/addDocument")
 async def create_doc(req: AddDocReq):
     mime_type, _ = guess_type(req.file.filename)
 
@@ -117,14 +117,14 @@ async def create_doc(req: AddDocReq):
     return res
 
 
-@app.post("/update")
+@app.post("/updateDocument")
 async def update_doc(req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
     doc_data = await req.json()
     return rag_service.update_doc(doc_data, req.state.user_role)
 
 
-@app.post("/delete")
+@app.post("/deleteDocument")
 async def delete_doc(req: DeleteDocReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.delete_doc(req.id, req.state.user_role)
