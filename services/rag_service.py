@@ -250,7 +250,7 @@ class RAGService:
                 continue
             
             if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
-            valid_docs_data.append(doc_data)
+                valid_docs_data.append(doc_data)
 
         return OKResponse(detail=f'Found {len(valid_docs_data}', data=valid_docs_data)
 
