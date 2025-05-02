@@ -3,13 +3,13 @@ import json
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
+load_dotenv()
+MONGO_DB_URL = os.getenv('MONGO_DB_URL')
 
 class MongoDBConnector:
     
     def __init__(self, company_id):
         """Initialize MongoDB connection with company-specific credentials."""
-        load_dotenv()
-        
         self.company_id = company_id
         
         # Construct credentials
@@ -20,9 +20,10 @@ class MongoDBConnector:
             raise ValueError(f"Password not found for company {company_id}")
         
         # Connect to MongoDB
+        url_data = MONGO_DB_URL.split(':')
         client = MongoClient(
-            host='localhost',
-            port=27017,
+            host=url_data[0],
+            port=url_data[1],
             username=username,
             password=password,
             authSource='admin'  # Assuming admin is the auth database
