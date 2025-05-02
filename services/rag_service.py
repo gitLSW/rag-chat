@@ -422,6 +422,9 @@ class RAGService:
             # Stream the second LLM response
             async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
                 yield chunk
+        
+        # Stream the document sources string at the very end
+        yield self._generate_source_references_str(doc_sources_map)
     
     
     async def _summarize_docs(self, docs_data, question):
@@ -472,11 +475,6 @@ class RAGService:
         prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```'
         
         return prompt
-        
-    
-    @staticmethod
-    def _build_second_prompt(question, mongo_res):
-        
     
     
     def _generate_source_references_str(self, doc_sources_map):
