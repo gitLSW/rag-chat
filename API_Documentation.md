@@ -56,7 +56,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 
 
 #### 2. `POST /addDocument`
-- **Purpose**: Uploads a document file along with its metadata that must conform to a predefined schema.
+- **Purpose**: Create or replace a document file along with its metadata that must conform to a predefined schema.
 - **Request Schema**:
 ```json
 {
