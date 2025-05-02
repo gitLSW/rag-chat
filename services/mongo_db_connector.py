@@ -1,4 +1,5 @@
 import os
+import json
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -10,7 +11,6 @@ class MongoDBConnector:
         load_dotenv()
         
         self.company_id = company_id
-        self.user_access_level = None  # Will be set in run()
         
         # Construct credentials
         username = f'llm_user_{company_id}'
@@ -30,29 +30,45 @@ class MongoDBConnector:
         
         self.db = client[company_id]
         
-        # Ensure views exist for all access levels (0-9 as per your example)
-        for level in range(1, 11):  # Assuming access levels 0-9
-            view_name = f'access_level_{level}'
+        # Ensure views for all unique access roles in the database exist
+        self._create_access_views()
+
+
+    def _create_access_views(self):
+        """Create views for all unique access roles found in documents."""
+        # Get all unique access roles from the base collection
+        pipeline = [
+            {"$unwind": "$access_groups"},
+            {"$group": {"_id": "$access_groups"}}
+        ]
+        
+        unique_roles = self.db.command('aggregate', self.base_collection, pipeline=pipeline)['result']
+        
+        # Create a view for each access role
+        for role in unique_roles:
+            role_name = role['_id']
+            view_name = f'access_view_{role_name}'
+            
             if view_name not in self.db.list_collection_names():
-                # Create view that filters documents up to this access level
+                # Create view that filters documents where the user's role is in access_groups
                 self.db.command({
                     'create': view_name,
                     'viewOn': self.base_collection,
                     'pipeline': [{
                         '$match': {
-                            'access_level': {'$gte': level} # lower access_level means more access privileges 
+                            'access_groups': role_name
                         }
                     }]
                 })
+                
 
-
-    def run(self, json_cmd, user_access_level):
+    def run(self, json_cmd, user_access_role):
         """
-        Execute a MongoDB command with proper access level restrictions.
+        Execute a MongoDB command with proper access role restrictions.
         
         Args:
             json_cmd (dict): The MongoDB command in JSON format
-            user_access_level (int): The access level of the current user
+            user_access_role (str): The access role of the current user
             
         Returns:
             The result of the MongoDB command execution
@@ -60,10 +76,8 @@ class MongoDBConnector:
         if isinstance(json_cmd, str):
             json_cmd = json.loads(json_cmd)
         
-        self.user_access_level = user_access_level
-        
         # Determine the appropriate view to query
-        view_name = f'access_level_{level}'
+        view_name = f'access_view_{user_access_role}'
             
         try:
             # Modify the command to use the view instead of base collection
@@ -122,7 +136,7 @@ class MongoDBConnector:
                 if lookup_op in stage and isinstance(stage[lookup_op].get('from'), str):
                     stage[lookup_op]['from'] = view_name
     
-
+    
     def close(self):
         """Close the MongoDB connection."""
         self.client.close()
