@@ -37,12 +37,10 @@ class MongoDBConnector:
     def _create_access_views(self):
         """Create views for all unique access roles found in documents."""
         # Get all unique access roles from the base collection
-        pipeline = [
+        unique_roles = self.db.command('aggregate', self.base_collection, pipeline=[
             {"$unwind": "$access_groups"},
             {"$group": {"_id": "$access_groups"}}
-        ]
-        
-        unique_roles = self.db.command('aggregate', self.base_collection, pipeline=pipeline)['result']
+        ])['result']
         
         # Create a view for each access role
         for role in unique_roles:
