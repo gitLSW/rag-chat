@@ -38,8 +38,8 @@ class MongoDBConnector:
         """Create views for all unique access roles found in documents."""
         # Get all unique access roles from the base collection
         unique_roles = self.db.command('aggregate', self.base_collection, pipeline=[
-            {"$unwind": "$access_groups"},
-            {"$group": {"_id": "$access_groups"}}
+            { "$unwind": "$access_groups" },
+            { "$group": { "_id": "$access_groups" } }
         ])['result']
         
         # Create a view for each access role
@@ -54,7 +54,7 @@ class MongoDBConnector:
                     'viewOn': self.base_collection,
                     'pipeline': [{
                         '$match': {
-                            'access_groups': role_name
+                            role_name: { '$in': '$access_groups' }
                         }
                     }]
                 })
@@ -102,7 +102,7 @@ class MongoDBConnector:
         cmd = original_cmd.copy()
         
         # Supported operations where operation_name == collection_field
-        READ_OPS = {'find', 'aggregate', 'count', 'distinct', 'mapReduce'}
+        READ_OPS = { 'find', 'aggregate', 'count', 'distinct', 'mapReduce' }
         
         # Find first matching operation
         for op in READ_OPS:
