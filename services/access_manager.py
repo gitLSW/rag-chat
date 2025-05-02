@@ -2,6 +2,7 @@ import os
 import json
 from fastapi import HTTPException
 from filelock import FileLock
+from pymongo import MongoClient
 
 class AccessNotFoundError(HTTPException):
     def __init__(self, doc_id, detail='File not found'):
@@ -80,3 +81,43 @@ class AccessManager:
                 del self.access_rights[doc_id]
                 json.dump(self.access_rights, f)
         return access_roles
+        
+        
+    def add_access_role(company_id, access_role):
+        """
+        Creates an LLM user with access to a specific view in a company database.
+        
+        Args:
+            company_id: The company identifier (used for db name and username)
+            access_role: The access role (used for view name and password env var)
+        """
+        # Connect to admin database (requires admin privileges)
+        client = MongoClient(os.getenv('MONGO_DB_URL'))
+        admin_db = client.admin
+        
+        # Configuration
+        username = f'llm_user_{company_id}_{access_role}'
+        password = os.getenv(f'LLM_USER_{company_id}_{access_role}_PW')
+        view_name = f'access_view_{access_role}'
+        
+        # Check if password exists
+        if not password:
+            raise ValueError(f"Password environment variable LLM_USER_{company_id}_{access_role}_PW not set")
+        
+        try:
+            # Create the user in the admin database (best practice)
+            admin_db.command('createUser', username,
+                            pwd=password,
+                            roles=[{
+                                'role': 'read',
+                                'db': company_id,
+                                'collection': view_name
+                            }])
+            
+            print(f"Created user {username} with access to view {db_name}.{view_name}")
+        
+        except Exception as e:
+            print(f"Error creating user: {e}")
+            raise
+        finally:
+            client.close()
