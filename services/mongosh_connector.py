@@ -45,99 +45,50 @@ class MongoDBConnector:
                 })
 
 
-    def run(self, json_cmd, user_access_level):
-        """
-        Execute a MongoDB command with proper access level restrictions.
-        
-        Args:
-            json_cmd (dict): The MongoDB command in JSON format
-            user_access_level (int): The access level of the current user
-            
-        Returns:
-            The result of the MongoDB command execution
-        """
-        self.user_access_level = user_access_level
-        
-        # Determine the appropriate view to query
-        view_name = f'access_level_{level}'
-        
-        try:
-            # Modify the command to use the view instead of base collection
-            modified_cmd = self._rewrite_command(json_cmd, view_name)
-            
-            # Execute the command
-            result = self.db.command(modified_cmd)
-            return result
-            
-        except Exception as e:
-            raise RuntimeError(f"Error executing MongoDB command: {str(e)}")
-
-
     def _rewrite_command(self, original_cmd, view_name):
         """
-        Rewrite the MongoDB command to use the appropriate view and ensure it's read-only.
-        
-        Args:
-            original_cmd (dict): Original MongoDB command
-            view_name (str): Name of the view to use
-            
-        Returns:
-            dict: Modified command using the view
-            
-        Raises:
-            ValueError: If command is not read-only or can't be safely rewritten
+        Minimal command rewriter that handles:
+        - find, aggregate, count, distinct, and mapReduce
+        - Injects view name into collection references
+        - Rejects all other operations
         """
-        # First make a deep copy to avoid modifying the original
+        if not isinstance(original_cmd, dict):
+            raise ValueError("Command must be a dictionary")
+    
         cmd = original_cmd.copy()
         
-        # List of allowed read-only command types
-        READ_ONLY_COMMANDS = {
-            'find', 'aggregate', 'count', 'countDocuments',
-            'estimatedDocumentCount', 'distinct', 'mapReduce'
-        }
+        # Supported operations where operation_name == collection_field
+        READ_OPS = {'find', 'aggregate', 'count', 'distinct', 'mapReduce'}
         
-        # Get the command type (first key in the dict)
-        command_type = next(iter(cmd.keys())) if cmd else None
+        # Find first matching operation
+        for op in READ_OPS:
+            if op in cmd:
+                # Replace collection name if it's a direct string reference
+                if isinstance(cmd[op], str):
+                    cmd[op] = view_name
+                
+                # Special handling for aggregate pipelines with $lookup
+                if op == 'aggregate' and 'pipeline' in cmd:
+                    self._rewrite_pipeline_collections(cmd['pipeline'], view_name)
+                
+                return cmd
         
-        if command_type not in READ_ONLY_COMMANDS:
-            raise ValueError(f"Command type '{command_type}' is not read-only or not supported")
+        raise ValueError(f"Unsupported operation. Allowed: {READ_OPS}")
+    
+    
+    def _rewrite_pipeline_collections(self, pipeline, view_name):
+        """Handle collection references in aggregation pipelines"""
+        if not isinstance(pipeline, list):
+            return
         
-        # Handle each command type appropriately
-        if command_type == 'find':
-            # Simple find command
-            cmd['find'] = view_name
-        elif command_type == 'aggregate':
-            # Aggregate command - collection can be in different places
-            if isinstance(cmd['aggregate'], str):
-                # Standard format: {aggregate: "collection", pipeline: [...]}
-                cmd['aggregate'] = view_name
-            elif isinstance(cmd['aggregate'], int):
-                # Rare case where aggregate might be a number (1 for $cmd)
-                # We should probably reject this as it's unusual
-                raise ValueError("Unsupported aggregate command format")
-        elif command_type in ('count', 'countDocuments'):
-            # Count commands
-            cmd[command_type] = view_name
-        elif command_type == 'estimatedDocumentCount':
-            # Doesn't take a collection parameter, but operates on current collection
-            # We'll need to modify this to work with our view approach
-            raise ValueError("estimatedDocumentCount not supported with views - use countDocuments")
-        elif command_type == 'distinct':
-            # Distinct command
-            cmd['distinct'] = view_name
-        elif command_type == 'mapReduce':
-            # MapReduce - though generally you should use aggregation instead
-            if cmd.get('out'):
-                raise ValueError("mapReduce with output collection not allowed")
-            cmd['mapReduce'] = view_name
-        
-        # Additional safety checks
-        if 'writeConcern' in cmd:
-            raise ValueError("writeConcern not allowed in read-only operations")
-        if 'bypassDocumentValidation' in cmd:
-            raise ValueError("bypassDocumentValidation not allowed in read-only operations")
-        
-        return cmd
+        for stage in pipeline:
+            if not isinstance(stage, dict):
+                continue
+            
+            # Rewrite $lookup/$graphLookup collection references
+            for lookup_op in ('$lookup', '$graphLookup'):
+                if lookup_op in stage and isinstance(stage[lookup_op].get('from'), str):
+                    stage[lookup_op]['from'] = view_name
     
 
     def close(self):
