@@ -415,7 +415,7 @@ class RAGService:
                     break  # Stop the first generation
         
         # If we found a mongo query, execute it and do second LLM call
-        if mongo_query:
+        if mongo_query and allow_mongo_db_query:
             try:
                 # Execute MongoDB query
                 mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
