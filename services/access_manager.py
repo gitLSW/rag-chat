@@ -27,9 +27,9 @@ class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
         self.access_table_path = f'./{company_id}/access_table.json'
-
-        admin_client = MongoClient(os.getenv('MONGO_ADMIN_URI'))
-        self.admin_db = admin_client['admin']
+        
+        # Connect to admin database (requires admin privileges)
+        self.db_client = MongoClient(MONGO_DB_URL)
 
         if not os.path.exists(self.access_table_path):
             self.access_rights = {}
@@ -94,24 +94,33 @@ class AccessManager:
         return access_roles
         
     
-    # TODO: Finish. add role to list
-    def add_access_role(company_id, access_role):
+    # TODO: Create a access_groups file !
+    def add_access_role(access_role):
         """
         Creates an LLM user with restricted access to a company-specific view.
         
         Args:
-            company_id: The unique identifier for the company
             access_role: The access role level (determines which view they can access)
         """
-        # Connect to admin database (requires admin privileges)
-        
+        # Create view that filters documents where the user's role is in access_groups
+        view_name = f'access_view_{role_name}'
+        company_db = self.db_client[self.company_id]
+        if view_name not in company_db.list_collection_names():
+                company_db.command({
+                    'create': view_name,
+                    'viewOn': 'docs',
+                    'pipeline': [{
+                        '$match': {
+                            'access_groups': { '$in': [role_name] }
+                        }
+                    }]
+                })
         
         # Configuration
-        view_name = f'access_view_{access_role}'
-        username = f'llm_user_{company_id}_{access_role}'
-        password = os.getenv(f'LLM_USER_{company_id}_PW')
+        username = f'llm_user_{self.company_id}_{access_role}'
+        password = os.getenv(f'LLM_USER_{self.company_id}_PW')
         
-        admin_db.command({
+        self.db_client['admin'].command({
             'createUser': username,
             'pwd': password,
             'roles': [{
