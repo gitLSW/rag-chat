@@ -57,6 +57,9 @@ class MongoDBConnector:
         Returns:
             The result of the MongoDB command execution
         """
+        if isinstance(json_cmd, str):
+            json_cmd = json.loads(json_cmd)
+        
         self.user_access_level = user_access_level
         
         # Determine the appropriate view to query
