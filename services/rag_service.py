@@ -15,11 +15,12 @@ from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
 
+from access_manager import AccessManager
 from vllm import SamplingParams
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
-from access_manager import AccessManager
+from mongo_db_connector import MongoDBConnector
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -69,9 +70,10 @@ class RAGService:
         - Loads a sentence transformer for generating vector embeddings of text.
         """
         self.company = company_id
+        self.access_manager = AccessManager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         self.doc_path_classifier = DocPathClassifier(company_id)
-        self.access_manager = AccessManager(company_id)
+        self.mongo_db_connector = MongoDBConnector(company_id)
 
         self.schemata_path = f'./{company_id}/doc_schemata.json'
         with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -409,7 +411,7 @@ class RAGService:
         # If we found a mongo query, execute it and do second LLM call
         if mongo_query:
             # Execute MongoDB query
-            mongo_result = self.mongo_db_connector.run(mongo_query)
+            mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
             
             # Build follow-up prompt with MongoDB results
             follow_up_prompt = (
