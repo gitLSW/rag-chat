@@ -13,24 +13,6 @@ class MongoDBConnector:
         """Initialize MongoDB connection with company-specific credentials."""
         self.company_id = company_id
         
-        # Construct credentials
-        username = f'llm_user_{company_id}'
-        password = os.getenv(f'LLM_USER_{company_id}_PW')
-        
-        if not password:
-            raise ValueError(f"Password not found for company {company_id}")
-        
-        # Connect to MongoDB
-        url_data = MONGO_DB_URL.split(':')
-        client = MongoClient(
-            MONGO_DB_URL,
-            username=username,
-            password=password,
-            authSource='admin'  # Assuming admin is the auth database
-        )
-        
-        self.db = client[company_id]
-                
 
     def run(self, json_cmd, user_access_role):
         """
@@ -46,9 +28,26 @@ class MongoDBConnector:
         if isinstance(json_cmd, str):
             json_cmd = json.loads(json_cmd)
         
+        # Construct credentials
+        username = f'llm_user_{self.company_id}_{user_access_role}'
+        password = os.getenv(f'LLM_USER_{self.company_id}_PW')
+        
+        if not password:
+            raise ValueError(f"Password not found for company {company_id}")
+        
+        # Connect to MongoDB
+        client = MongoClient(
+            MONGO_DB_URL,
+            username=username,
+            password=password,
+            authSource='admin'  # Assuming admin is the auth database
+        )
+        
+        company_db = client[company_id]
+        
         # Determine the appropriate view to query
         view_name = f'access_view_{user_access_role}'
-        if view_name not in self.db.list_collection_names():
+        if view_name not in company_db.list_collection_names():
             raise ValueError(f'The no mongoDB view found for user_role: {user_ccess_role}')
         
         try:
@@ -56,7 +55,7 @@ class MongoDBConnector:
             modified_cmd = self._rewrite_command(json_cmd, view_name)
             
             # Execute the command
-            result = self.db.command(modified_cmd)
+            result = company_db.command(modified_cmd)
             return result
             
         except Exception as e:
