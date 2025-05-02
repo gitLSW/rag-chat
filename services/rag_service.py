@@ -489,7 +489,7 @@ class RAGService:
             for doc_type in doc_types:
                 prompt += f'\n\Doc_type {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
             
-            prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```'
+            prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```/nIf you use think tags <think> ... </think> to prepare an answer, write the mongoDB command with its tags inside your think tags.'
         
         return prompt
     
