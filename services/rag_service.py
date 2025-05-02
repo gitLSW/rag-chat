@@ -2,6 +2,7 @@ import re
 import os
 import json
 from collections import defaultdict
+from dotenv import load_dotenv
 
 from filelock import FileLock
 import asyncio
@@ -21,6 +22,10 @@ from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
 from mongo_db_connector import MongoDBConnector
+
+
+load_dotenv()
+MONGO_DB_URL = os.getenv('MONGO_DB_URL')
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
@@ -80,7 +85,7 @@ class RAGService:
         with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
             self.doc_schemata = json.loads(f.read())
 
-        client = MongoClient("mongodb://localhost:27017/")
+        client = MongoClient(MONGO_DB_URL)
 
         # Create or connect to database
         self.json_db = client[company_id]['docs']
