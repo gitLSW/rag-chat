@@ -1,8 +1,13 @@
 import os
 import json
+from dotenv import load_dotenv
 from fastapi import HTTPException
 from filelock import FileLock
 from pymongo import MongoClient
+
+
+load_dotenv()
+MONGO_DB_URL = os.getenv('MONGO_DB_URL')
 
 class AccessNotFoundError(HTTPException):
     def __init__(self, doc_id, detail='File not found'):
@@ -82,7 +87,9 @@ class AccessManager:
                 json.dump(self.access_rights, f)
         return access_roles
         
-        
+    
+    # TODO: Finish. add role to list
+    # This seems weird. why is there a admin db ?
     def add_access_role(company_id, access_role):
         """
         Creates an LLM user with access to a specific view in a company database.
@@ -92,7 +99,7 @@ class AccessManager:
             access_role: The access role (used for view name and password env var)
         """
         # Connect to admin database (requires admin privileges)
-        client = MongoClient(os.getenv('MONGO_DB_URL'))
+        client = MongoClient(MONGO_DB_URL)
         admin_db = client.admin
         
         # Configuration
