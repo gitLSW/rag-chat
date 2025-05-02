@@ -54,7 +54,7 @@ class MongoDBConnector:
                     'viewOn': self.base_collection,
                     'pipeline': [{
                         '$match': {
-                            role_name: { '$in': '$access_groups' }
+                            'access_groups': { '$in': [role_name] }
                         }
                     }]
                 })
