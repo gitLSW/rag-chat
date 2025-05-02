@@ -9,10 +9,12 @@ from pymongo import MongoClient
 load_dotenv()
 MONGO_DB_URL = os.getenv('MONGO_DB_URL')
 
+
 class AccessNotFoundError(HTTPException):
     def __init__(self, doc_id, detail='File not found'):
         super().__init__(status_code=404, detail=detail)
         self.doc_id = doc_id
+        
 
 class InsufficientAccessError(HTTPException):
     def __init__(self, user_access_role, doc_id, detail='Insufficient access rights, permission denied'):
@@ -20,10 +22,14 @@ class InsufficientAccessError(HTTPException):
         self.user_access_role = user_access_role
         self.doc_id = doc_id
 
+
 class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
         self.access_table_path = f'./{company_id}/access_table.json'
+
+        admin_client = MongoClient(os.getenv('MONGO_ADMIN_URI'))
+        self.admin_db = admin_client['admin']
 
         if not os.path.exists(self.access_table_path):
             self.access_rights = {}
@@ -89,42 +95,28 @@ class AccessManager:
         
     
     # TODO: Finish. add role to list
-    # This seems weird. why is there a admin db ?
     def add_access_role(company_id, access_role):
         """
-        Creates an LLM user with access to a specific view in a company database.
+        Creates an LLM user with restricted access to a company-specific view.
         
         Args:
-            company_id: The company identifier (used for db name and username)
-            access_role: The access role (used for view name and password env var)
+            company_id: The unique identifier for the company
+            access_role: The access role level (determines which view they can access)
         """
         # Connect to admin database (requires admin privileges)
-        client = MongoClient(MONGO_DB_URL)
-        admin_db = client.admin
+        
         
         # Configuration
-        username = f'llm_user_{company_id}_{access_role}'
-        password = os.getenv(f'LLM_USER_{company_id}_{access_role}_PW')
         view_name = f'access_view_{access_role}'
+        username = f'llm_user_{company_id}_{access_role}'
+        password = os.getenv(f'LLM_USER_{company_id}_PW')
         
-        # Check if password exists
-        if not password:
-            raise ValueError(f"Password environment variable LLM_USER_{company_id}_{access_role}_PW not set")
-        
-        try:
-            # Create the user in the admin database (best practice)
-            admin_db.command('createUser', username,
-                            pwd=password,
-                            roles=[{
-                                'role': 'read',
-                                'db': company_id,
-                                'collection': view_name
-                            }])
-            
-            print(f"Created user {username} with access to view {db_name}.{view_name}")
-        
-        except Exception as e:
-            print(f"Error creating user: {e}")
-            raise
-        finally:
-            client.close()
+        admin_db.command({
+            'createUser': username,
+            'pwd': password,
+            'roles': [{
+                'role': 'read',
+                'db': db_name,
+                'collection': view_name
+            }]
+        })
