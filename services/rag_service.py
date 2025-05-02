@@ -254,101 +254,6 @@ class RAGService:
 
         return OKResponse(detail=f'Found {len(valid_docs_data}', data=valid_docs_data)
 
-    
-    async def query_llm(self, question, n_results, user_access_role, stream=False):
-        """
-        Answers a user question by retrieving relevant document content and querying a local LLM.
-
-        Args:
-            question (str): The user's natural language question.
-
-        Returns:
-            str: Final LLM-generated answer with source references.
-        """
-        docs_data = self.find_docs(question, n_results, user_access_role).data
-
-        async def _load_and_summarize_doc(doc_id):
-            txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
-            async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-                doc_text = await f.read()
-
-            summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
-            return await RAGService.llm_service.query(summarize_prompt)
-        
-        # Read and summarize all docs concurrently
-        summarize_tasks = []
-        doc_types = set()
-        doc_sources_map = defaultdict(set)
-        for doc_data in docs_data:
-            doc_id = doc_data['docId']
-            page_num = doc_data['pageNum']
-            doc_types.add(doc_data['docType'])
-
-            if page_num is None:
-                doc_sources_map[doc_id] = None
-            else:
-                doc_sources_map[doc_id].add(page_num)
-            
-            summarize_tasks.append(_load_and_summarize_doc(doc_id))
-
-        # Compose source references
-        sources_info = 'Consult these documents for more detail:\n'
-        for doc_id, pages in doc_sources_map.items():
-            doc_pseudo_path = self.json_db.find_one({ '_id': doc_id }).get('path')
-            sources_info += doc_pseudo_path
-            if pages is None:
-                sources_info += '\n'
-            else:
-                sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
-                
-        # Run all LLM summaries concurrently via vLLM server
-        doc_summaries = await asyncio.gather(*summarize_tasks)
-
-        # Create prompt with summaries
-        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n"
-        for doc_summary in doc_summaries:
-            clean_summary = re.sub(r'<think>.*?</think>', '', doc_summary, flags=re.DOTALL)
-            prompt += '\n\n' + clean_summary
-
-        # Attach MongoDB to prompt
-        prompt += '\n\n\nYou have read-only access to the Mongo database. These are the JSON schemata for each MongoDB collection:'
-
-        for doc_type in doc_types:
-            prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
-        
-        prompt += '\n\nIf you want to query the MongoDB, write a mongosh query in tags like so: ```mongosh YOUR COMMAND ```'
-
-        if not stream:
-            # Final prompt to answer the question (still single prompt)
-            answer = await RAGService.llm_service.query(prompt, stream=False)
-
-            # Extract mongosh commands if existant
-            mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
-            if mongosh_commands:
-                self.mongosh_service.run(mongosh_commands)
-                # TODO: Return commands in next chat. (Isolate the function into functions to generate the prompt or run the query and then call them as needed)
-
-            # Clean out any lingering <think> tags
-            answer_text = re.sub(r'<think>.*?</think>', '', answer, flags=re.DOTALL)
-            
-            return OKResponse(data={ 'llm_response': sources_info + answer_text })
-        
-        # Stream LLM response tokens over the WebSocket
-        answer = ''
-        mongosh_found = False
-        async for chunk in RAGService.llm_service.query(prompt, stream=True):
-            answer += chunk
-
-            # Extract mongosh commands if existant
-            if not mongosh_found:
-                mongosh_commands = re.search(r"```mongosh\s*(.*?)\s*```", answer, re.DOTALL).group(1)
-                if mongosh_commands:
-                    self.mongosh_service.run(mongosh_commands)
-                    mongosh_found = True
-                    # TODO: Return commands in next chat. (Isolate the function into functions to generate the prompt or run the query and then call them as needed)
-
-            yield chunk
-    
 
     async def extract_json(self, text, doc_type=None):
         """
@@ -464,6 +369,132 @@ class RAGService:
         final_type = max(normalized_scores.items(), key=lambda x: x[1])[0]
 
         return self.doc_schemata[final_type], final_type
+    
+    
+    async def query_llm(self, question, n_results, user_access_role, stream=False):
+        """
+        Answers a user question by retrieving relevant document content and querying a local LLM.
+    
+        Args:
+            question (str): The user's natural language question.
+            n_results (int): Number of documents to retrieve
+            user_access_role (str): User's access role for filtering documents
+            stream (bool): Whether to stream the response
+    
+        Returns:
+            str: Final LLM-generated answer with source references.
+        """
+        # Retrieve relevant documents
+        docs_data = self.find_docs(question, n_results, user_access_role).data
+        
+        # Process documents and prepare summaries
+        doc_summaries, doc_types, doc_sources_map = await self._summarize_docs(docs_data, question)
+        
+        # Build the final prompt
+        prompt = self._build_final_prompt(question, doc_summaries, doc_types)
+        
+        # Handle streaming vs non-streaming response
+        if not stream:
+            answer = await self._handle_non_streaming_response(prompt)
+            # Generate source references information
+            sources_info = self._generate_source_references_str(doc_sources_map)
+            return OKResponse(data={ 'llm_response': sources_info + answer })
+        else:
+            return self._handle_streaming_response(prompt)
+    
+    
+    async def _summarize_docs(self, docs_data, question):
+        """Process documents concurrently to generate summaries and collect metadata."""
+        doc_types = set()
+        doc_sources_map = defaultdict(set)
+        summarize_tasks = []
+        
+        # Loads and summarizes a single document.
+        async def _load_and_summarize_doc(self, doc_id, question):
+            txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+            async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+                doc_text = await f.read()
+        
+            summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
+            summary = await RAGService.llm_service.query(summarize_prompt)
+            return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
+        
+        for doc_data in docs_data:
+            doc_id = doc_data['docId']
+            page_num = doc_data['pageNum']
+            doc_types.add(doc_data['docType'])
+    
+            if page_num is None:
+                doc_sources_map[doc_id] = None
+            else:
+                doc_sources_map[doc_id].add(page_num)
+            
+            summarize_tasks.append(_load_and_summarize_doc(doc_id, question))
+    
+        # Run all LLM summaries concurrently
+        doc_summaries = await asyncio.gather(*summarize_tasks)
+        return doc_summaries, doc_types, doc_sources_map
+    
+    
+    def _build_final_prompt(self, question, doc_summaries, doc_types):
+        """Construct the final prompt for the LLM."""
+        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the question in a concise manner:\n"
+        for doc_summary in doc_summaries:
+            prompt += '\n\n' + doc_summary
+    
+        # Attach MongoDB schema information
+        prompt += '\n\n\nYou have read-only access to the Mongo database. These are the JSON schemata for each MongoDB collection:'
+    
+        for doc_type in doc_types:
+            prompt += f'\n\nCollection {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
+        
+        prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```'
+        
+        return prompt
+    
+    
+    def _generate_source_references_str(self, doc_sources_map):
+        """Generate the source references string."""
+        sources_info = 'Consult these documents for more detail:\n'
+        for doc_id, pages in doc_sources_map.items():
+            doc_pseudo_path = self.json_db.find_one({ '_id': doc_id }).get('path')
+            sources_info += doc_pseudo_path
+            if pages is None:
+                sources_info += '\n'
+            else:
+                sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
+        return sources_info
+    
+    
+    async def _handle_non_streaming_response(self, prompt):
+        """Handle the non-streaming response case."""
+        answer = await RAGService.llm_service.query(prompt, stream=False)
+    
+        # Extract mongo_json commands if exist
+        mongo_queries = re.search(r"```mongo_json\s*(.*?)\s*```", answer, re.DOTALL)
+        if mongo_queries:
+            query_result = self.mongo_db_connector.run(mongo_queries.group(1))
+            # TODO: Incorporate query results into the response
+        
+        # Clean out any lingering <think> tags
+        return re.sub(r'<think>.*?</think>', '', answer, flags=re.DOTALL)
+    
+    
+    async def _handle_streaming_response(self, prompt):
+        """Handle the streaming response case."""
+        answer = ''
+        mongo_found = False
+        async for chunk in RAGService.llm_service.query(prompt, stream=True):
+            answer += chunk
+    
+            # Extract mongo_json commands if exist
+            if not mongo_found:
+                mongo_queries = re.search(r"```mongo_json\s*(.*?)\s*```", answer, re.DOTALL)
+                if mongo_queries:
+                    self.mongo_db_connector.run(mongo_queries.group(1))
+                    mongo_found = True
+            
+            yield chunk
     
 
     def _merge_with_base_schema(self, json_schema):
