@@ -48,7 +48,7 @@ class MongoDBConnector:
         # Determine the appropriate view to query
         view_name = f'access_view_{user_access_role}'
         if view_name not in company_db.list_collection_names():
-            raise ValueError(f'The no mongoDB view found for user_role: {user_ccess_role}')
+            raise ValueError(f'The no mongoDB view found for user_role "{user_ccess_role}". Add it first at /addAccessGroup')
         
         try:
             # Modify the command to use the view instead of base collection
