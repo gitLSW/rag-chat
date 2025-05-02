@@ -33,7 +33,8 @@ BASE_DOC_SCHEMA = {
         "docType": {"type": "string"},
         "accessGroups": {
             "type": "array",
-            "items": {"type": "string"}
+            "items": {"type": "string"},
+            "minItems": 1
         }
     },
     "required": ["id", "path", "docType", "accessGroups"]
