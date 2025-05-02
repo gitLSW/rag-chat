@@ -118,10 +118,6 @@ class RAGService:
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
         
-        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
-        if os.path.exists(txt_path):
-            raise HTTPException(409, f"Document {doc_id} already exists. Overrides aren't permitted!")
-
         access_groups = doc_data.get('accessGroups')
         if not access_groups or len(access_groups) == 0:
             raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list')
@@ -156,14 +152,15 @@ class RAGService:
             doc_data = { **extracted_doc_data, **doc_data }
         print(doc_data)
         jsonschema.validate(doc_data, doc_schema)
-        self.json_db.insert_one({ '_id': doc_id }, doc_data, upsert=True)
+        self.json_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
-        # Load and process PDF file using OCR
+        # In case of override, remove all old embedding entries
+        self.vector_db.delete(where={ 'doc_id': doc_id })
         for page_num, paragraph in paragraphs:
             # Convert paragraph into an embedding (vector representation)
             block_embedding = RAGService.embedding_model.encode(paragraph)
 
-            # Store the text and its embedding in the vector DB (ChromaDB)
+            # Store the paragraph's metadata in the vector DB using its embedding
             self.vector_db.upsert(
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
@@ -175,6 +172,7 @@ class RAGService:
             )
 
         # Save the extracted content in .txt file
+        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
