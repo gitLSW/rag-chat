@@ -427,14 +427,14 @@ class RAGService:
                     f'Here is a helpful database query and respone: \n\n{json.dumps(mongo_result, indent=2)}\n\n\n'
                     f'Please answer the question "{question}" briefly and precisely using all the available information.'
                 )
+                
+                # Stream the second LLM response
+                async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
+                    yield chunk
             except json.JSONDecodeError e:
                 # The LLM provided a invalid database query
                 async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=False):
                     yield chunk
-                    
-            # Stream the second LLM response
-            async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
-                yield chunk
         
         # Stream the document sources string at the very end
         yield self._generate_source_references_str(doc_sources_map)
