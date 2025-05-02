@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 MONGO_DB_URL = os.getenv('MONGO_DB_URL')
 
+
 class MongoDBConnector:
     
     def __init__(self, company_id):
@@ -29,35 +30,6 @@ class MongoDBConnector:
         )
         
         self.db = client[company_id]
-        
-        # Ensure views for all unique access roles in the database exist
-        self._create_access_views()
-
-
-    def _create_access_views(self):
-        """Create views for all unique access roles found in documents."""
-        # Get all unique access roles from the base collection
-        unique_roles = self.db.command('aggregate', self.base_collection, pipeline=[
-            { "$unwind": "$access_groups" },
-            { "$group": { "_id": "$access_groups" } }
-        ])['result']
-        
-        # Create a view for each access role
-        for role in unique_roles:
-            role_name = role['_id']
-            view_name = f'access_view_{role_name}'
-            
-            if view_name not in self.db.list_collection_names():
-                # Create view that filters documents where the user's role is in access_groups
-                self.db.command({
-                    'create': view_name,
-                    'viewOn': self.base_collection,
-                    'pipeline': [{
-                        '$match': {
-                            'access_groups': { '$in': [role_name] }
-                        }
-                    }]
-                })
                 
 
     def run(self, json_cmd, user_access_role):
@@ -76,7 +48,9 @@ class MongoDBConnector:
         
         # Determine the appropriate view to query
         view_name = f'access_view_{user_access_role}'
-            
+        if view_name not in self.db.list_collection_names():
+            raise ValueError(f'The no mongoDB view found for user_role: {user_ccess_role}')
+        
         try:
             # Modify the command to use the view instead of base collection
             modified_cmd = self._rewrite_command(json_cmd, view_name)
