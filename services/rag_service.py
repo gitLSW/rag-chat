@@ -476,7 +476,7 @@ class RAGService:
         return doc_summaries, doc_types, doc_sources_map
     
     
-    def _build_prompt(self, question, doc_summaries, doc_types, allow_mongo_db_query=True)
+    def _build_prompt(self, question, doc_summaries, doc_types, thinking_model=True, allow_mongo_db_query=True)
         """Construct the final prompt for the LLM."""
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n"
         for doc_summary in doc_summaries:
@@ -489,10 +489,10 @@ class RAGService:
             for doc_type in doc_types:
                 prompt += f'\n\Doc_type {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
             
-            prompt += (
-                '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.',
-                'If you use think tags `<think> YOUR THOUGHTS </think>` to prepare an answer, write the mongoDB command with its tags inside your think tags.'
-        
+            prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
+            if thinking_model:
+                prompt += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
+            
         return prompt
     
     
