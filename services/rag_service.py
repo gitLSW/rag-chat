@@ -373,7 +373,7 @@ class RAGService:
         return self.doc_schemata[final_type], final_type
     
     
-    async def query_llm(self, question, n_results, user_access_role):
+    async def rag_query(self, question, n_results, user_access_role):
         """
         Answers a user question by retrieving relevant document content and querying a local LLM.
         
@@ -391,8 +391,14 @@ class RAGService:
         # Process documents and prepare summaries
         doc_summaries, doc_types, doc_sources_map = await self._summarize_docs(docs_data, question)
         
+        async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role):
+            yield chunk
+        
+    
+    async def _query_llm(self, question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=True):
+        """ Generates the prompt and queries the LLM """
         # Build the initial prompt
-        prompt = self._build_prompt(question, doc_summaries, doc_types)
+        prompt = self._build_prompt(question, doc_summaries, doc_types, allow_mongo_db_query)
         
         # First LLM query - watch for mongo_json commands
         answer_buffer = ""
@@ -401,8 +407,8 @@ class RAGService:
             answer_buffer += chunk
             yield chunk
             
-            # Check for complete mongo_json block
-            if "```mongo_json" in answer_buffer and "```" in answer_buffer:
+            if allow_mongo_db_query:
+                # Check for complete mongo_json block
                 mongo_match = re.search(r"```mongo_json\s*(.*?)\s*```", answer_buffer, re.DOTALL)
                 if mongo_match:
                     mongo_query = mongo_match.group(1)
@@ -410,17 +416,22 @@ class RAGService:
         
         # If we found a mongo query, execute it and do second LLM call
         if mongo_query:
-            # Execute MongoDB query
-            mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
-            
-            # Build follow-up prompt with MongoDB results
-            follow_up_prompt = (
-                f'{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n\n'
-                 f'Document summaries:\n\n{"\n\n\n".join(doc_summaries)}\n\n\n'
-                f'Here is a helpful database query and respone: \n\n{json.dumps(mongo_result, indent=2)}\n\n\n'
-                f'Please answer the question "{question}" briefly and precisely using all the available information.'
-            )
-            
+            try:
+                # Execute MongoDB query
+                mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
+                
+                # Build follow-up prompt with MongoDB results
+                follow_up_prompt = (
+                    f'{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n\n'
+                    f'Document summaries:\n\n{"\n\n\n".join(doc_summaries)}\n\n\n'
+                    f'Here is a helpful database query and respone: \n\n{json.dumps(mongo_result, indent=2)}\n\n\n'
+                    f'Please answer the question "{question}" briefly and precisely using all the available information.'
+                )
+            except json.JSONDecodeError e:
+                # The LLM provided a invalid database query
+                async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=False):
+                    yield chunk
+                    
             # Stream the second LLM response
             async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
                 yield chunk
@@ -462,19 +473,20 @@ class RAGService:
         return doc_summaries, doc_types, doc_sources_map
     
     
-    def _build_prompt(self, question, doc_summaries, doc_types):
+    def _build_prompt(self, question, doc_summaries, doc_types, allow_mongo_db_query=True)
         """Construct the final prompt for the LLM."""
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n"
         for doc_summary in doc_summaries:
             prompt += '\n\n' + doc_summary
     
         # Attach MongoDB schema information
-        prompt += '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
-    
-        for doc_type in doc_types:
-            prompt += f'\n\Doc_type {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
+        if allow_mongo_db_query:
+            prompt += '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
         
-        prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```'
+            for doc_type in doc_types:
+                prompt += f'\n\Doc_type {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
+            
+            prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```'
         
         return prompt
     
