@@ -42,11 +42,12 @@ All endpoints require a Bearer Token authentication and most require an addition
           "docType": {"type": "string"},
           "accessGroups": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {"type": "string"},
+              "minItems": 1
           }
       },
       "required": ["id", "path", "docType", "accessGroups"],
-      "description": "The added JSON schema",
+      "description": "The added JSON schema, combined with the server's required base document schema",
       "additionalProperties": true
     }
   }
@@ -85,9 +86,8 @@ All endpoints require a Bearer Token authentication and most require an addition
         },
         "accessGroups": {
           "type": "array",
-          "items": {
-            "type": "string"
-          },
+          "items": {"type": "string"},
+          "minItems": 1,
           "description": "List of groups with access to this document"
         }
       },
@@ -117,7 +117,8 @@ All endpoints require a Bearer Token authentication and most require an addition
           "docType": {"type": "string"},
           "accessGroups": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {"type": "string"},
+              "minItems": 1
           }
       },
       "required": ["id", "path", "docType", "accessGroups"],
@@ -152,9 +153,8 @@ All endpoints require a Bearer Token authentication and most require an addition
     },
     "accessGroups": {
       "type": "array",
-      "items": {
-        "type": "string"
-      },
+      "items": {"type": "string"},
+      "minItems": 1,
       "description": "List of groups with access to this document"
     }
   },
@@ -181,7 +181,8 @@ All endpoints require a Bearer Token authentication and most require an addition
           "docType": {"type": "string"},
           "accessGroups": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {"type": "string"},
+              "minItems": 1
           }
       },
       "required": ["id", "path", "docType", "accessGroups"],
@@ -224,7 +225,8 @@ All endpoints require a Bearer Token authentication and most require an addition
           "docType": {"type": "string"},
           "accessGroups": {
               "type": "array",
-              "items": {"type": "string"}
+              "items": {"type": "string"},
+              "minItems": 1
           }
       },
       "required": ["id", "path", "docType", "accessGroups"],
