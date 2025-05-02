@@ -1,80 +1,100 @@
 import os
-import re
-from dotenv import load_dotenv
-import subprocess
-import urllib.parse
-from typing import List, Dict
 from pymongo import MongoClient
-
-load_dotenv()
-
-DANGEROUS_PATTERNS = [
-    'eval', 'function', 'system', 'load', 'sleep',
-    'while', 'for', 'insert', 'update', 'delete',
-    'remove', 'drop', 'shutdown', 'adminCommand'
-]
+from dotenv import load_dotenv
 
 
-class MongoshConnector:
-    def __init__(self, company_id: str, access_level: int):
-        """
-        Initialize the connector for a specific company and access level.
-        """
-        if not 0 <= access_level <= 10:
-            raise ValueError("Access level must be between 0 and 10")
-
+class MongoDBConnector:
+    def __init__(self, company_id):
+        """Initialize MongoDB connection with company-specific credentials."""
+        load_dotenv()
+        
         self.company_id = company_id
-        self.access_level = access_level
-        self.username = f"llm_{company_id}_level{access_level}"
-        self.password = os.getenv(f"LLM_{self.company_id}_PW")
-         
-    
-    def run(self, mongosh_cmd: str) -> str:
-        """
-        Run a mongosh command with the appropriate access level restrictions.
+        self.user_access_level = None  # Will be set in run()
         
-        :param mongosh_cmd: MongoDB shell command
-        :return: Output or error message
+        # Construct credentials
+        username = f'llm_user_{company_id}'
+        password = os.getenv(f'LLM_USER_{company_id}_PW')
+        
+        if not password:
+            raise ValueError(f"Password not found for company {company_id}")
+        
+        # Connect to MongoDB
+        client = MongoClient(
+            host='localhost',
+            port=27017,
+            username=username,
+            password=password,
+            authSource='admin'  # Assuming admin is the auth database
+        )
+        
+        self.db = client[company_id]
+        
+        # Ensure views exist for all access levels (0-9 as per your example)
+        for level in range(1, 11):  # Assuming access levels 0-9
+            view_name = f'access_level_{level}'
+            if view_name not in self.db.list_collection_names():
+                # Create view that filters documents up to this access level
+                self.db.command({
+                    'create': view_name,
+                    'viewOn': self.base_collection,
+                    'pipeline': [{
+                        '$match': {
+                            'access_level': {'$gte': level} # lower access_level means more access privileges 
+                        }
+                    }]
+                })
+
+
+    def run(self, json_cmd, user_access_level):
         """
-        try:
-            self._validate_command(mongosh_cmd)
+        Execute a MongoDB command with proper access level restrictions.
+        
+        Args:
+            json_cmd (dict): The MongoDB command in JSON format
+            user_access_level (int): The access level of the current user
             
-            username = urllib.parse.quote_plus(self.username)
-            password = urllib.parse.quote_plus(self.password)
-            uri = f"mongodb://{username}:{password}@localhost:27017/{self.company_id}?authSource=admin"
-
-            cmd = [
-                "mongosh",
-                uri,
-                "--quiet",
-                "--eval",
-                mongosh_cmd
-            ]
-
-            process = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-
-            if process.returncode != 0:
-                raise RuntimeError(f"mongosh error: {process.stderr.strip()}")
-
-            return process.stdout.strip()
-
-        except Exception as e:
-            return f"Error executing mongosh command: {str(e)}"
-
-
-    def _validate_command(self, mongosh_cmd: str) -> None:
-        """Validate the command for security."""
-        if not isinstance(mongosh_cmd, str):
-            raise ValueError("mongosh_cmd must be a string.")
-        if len(mongosh_cmd) > 5000:
-            raise ValueError("mongosh_cmd is too long.")
+        Returns:
+            The result of the MongoDB command execution
+        """
+        self.user_access_level = user_access_level
         
-        # Prevent dangerous operations
-        for cmd in DANGEROUS_PATTERNS:
-            if re.search(rf'\b{cmd}\b', mongosh_cmd, re.IGNORECASE):
-                raise ValueError(f"Potentially dangerous command detected: '{cmd}'")
+        # Determine the appropriate view to query
+        view_name = f'access_level_{level}'
+        
+        try:
+            # Modify the command to use the view instead of base collection
+            modified_cmd = self._rewrite_command(json_cmd, view_name)
+            
+            # Execute the command
+            result = self.db.command(modified_cmd)
+            return result
+            
+        except Exception as e:
+            raise RuntimeError(f"Error executing MongoDB command: {str(e)}")
+
+
+    def _rewrite_command(self, original_cmd, view_name):
+        """
+        Rewrite the MongoDB command to use the appropriate view.
+        
+        For find operations, we modify the collection name.
+        For other operations, we might need different handling.
+        """
+        # This is a simplified version - you may need to expand based on your commands
+        if 'find' in cmd:
+            # For find operations, just change the collection name
+            cmd['find'] = view_name
+            return cmd
+        elif 'aggregate' in original_cmd:
+            # For aggregate operations
+            cmd['aggregate'] = view_name
+            return cmd
+        else:
+            # For other commands, you might want different handling
+            # This is a safety measure - you might want to restrict certain commands
+            raise ValueError(f"Unsupported command type: {original_cmd}")
+
+
+    def close(self):
+        """Close the MongoDB connection."""
+        self.client.close()
