@@ -29,21 +29,6 @@ class MongoDBConnector:
         
         self.db = client[company_id]
         
-        # Ensure views exist for all access levels (0-9 as per your example)
-        for level in range(1, 11):  # Assuming access levels 0-9
-            view_name = f'access_level_{level}'
-            if view_name not in self.db.list_collection_names():
-                # Create view that filters documents up to this access level
-                self.db.command({
-                    'create': view_name,
-                    'viewOn': self.base_collection,
-                    'pipeline': [{
-                        '$match': {
-                            'access_level': {'$gte': level} # lower access_level means more access privileges 
-                        }
-                    }]
-                })
-
 
     def run(self, json_cmd, user_access_level):
         """
@@ -61,6 +46,19 @@ class MongoDBConnector:
         # Determine the appropriate view to query
         view_name = f'access_level_{level}'
         
+        # Ensure views exist for all access levels (0-9 as per your example)
+        if view_name not in self.db.list_collection_names():
+            # Create view that filters documents up to this access level
+            self.db.command({
+                'create': view_name,
+                'viewOn': self.base_collection,
+                'pipeline': [{
+                        '$match': {
+                        'access_level': {'$gte': level} # lower access_level means more access privileges 
+                    }
+                }]
+            })
+            
         try:
             # Modify the command to use the view instead of base collection
             modified_cmd = self._rewrite_command(json_cmd, view_name)
