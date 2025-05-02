@@ -22,8 +22,7 @@ class MongoDBConnector:
         # Connect to MongoDB
         url_data = MONGO_DB_URL.split(':')
         client = MongoClient(
-            host=url_data[0],
-            port=url_data[1],
+            MONGO_DB_URL,
             username=username,
             password=password,
             authSource='admin'  # Assuming admin is the auth database
