@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 
 class MongoDBConnector:
+    
     def __init__(self, company_id):
         """Initialize MongoDB connection with company-specific credentials."""
         load_dotenv()
@@ -43,6 +44,34 @@ class MongoDBConnector:
                         }
                     }]
                 })
+
+
+    def run(self, json_cmd, user_access_level):
+        """
+        Execute a MongoDB command with proper access level restrictions.
+        
+        Args:
+            json_cmd (dict): The MongoDB command in JSON format
+            user_access_level (int): The access level of the current user
+            
+        Returns:
+            The result of the MongoDB command execution
+        """
+        self.user_access_level = user_access_level
+        
+        # Determine the appropriate view to query
+        view_name = f'access_level_{level}'
+            
+        try:
+            # Modify the command to use the view instead of base collection
+            modified_cmd = self._rewrite_command(json_cmd, view_name)
+            
+            # Execute the command
+            result = self.db.command(modified_cmd)
+            return result
+            
+        except Exception as e:
+            raise RuntimeError(f"Error executing MongoDB command: {str(e)}")
 
 
     def _rewrite_command(self, original_cmd, view_name):
