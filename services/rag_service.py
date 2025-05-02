@@ -117,8 +117,8 @@ class RAGService:
             raise HTTPException(409, f"Document {doc_id} already exists. Overrides aren't permitted!")
 
         access_groups = doc_data.get('accessGroups')
-        if not access_groups:
-            raise HTTPException(400, 'docData must contain a "accessGroups" list')
+        if not access_groups or len(access_groups) == 0:
+            raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list')
         
         # Validate user access and create if necessary
         self.access_manager.create_doc_access(doc_id, access_groups, user_access_role)
@@ -184,6 +184,8 @@ class RAGService:
         
         # Validate user access and update if necessary
         new_access_groups = doc_data.get('accessGroups')
+        if not new_access_groups or len(new_access_groups) == 0:
+            raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list') 
         self.access_manger.update_doc_access(doc_id, new_access_groups, user_access_role)
         
         old_doc = self.json_db.find_one({ '_id': doc_id })
