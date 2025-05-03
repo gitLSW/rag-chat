@@ -8,6 +8,7 @@ from transformers import AutoTokenizer
 load_dotenv()
 LLM_URL = os.getenv('LLM_URL')
 LLM_MODEL = os.getenv('LLM_MODEL')
+vLLM_API_KEY = os.getenv('vLLM_API_KEY')
 
 class LLMService:
     """
@@ -27,7 +28,7 @@ class LLMService:
         self.model = LLM_MODEL
         self.client = AsyncClient(  # Use async client
             base_url=vllm_url.rstrip('/') + "/v1",
-            api_key="token-abc123"
+            api_key=vLLM_API_KEY
         )
         self.tokenizer = AutoTokenizer.from_pretrained(self.model)
 
