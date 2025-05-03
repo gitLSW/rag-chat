@@ -253,7 +253,12 @@ class RAGService:
 
         txt_path = f'./{self.company_id}/docs/{doc_id}.txt'
         with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
+            doc_text = f.read()
+            
+        return OKResponse(detail=f'Successfully read Document {doc_id}', data={
+            'doc_id': doc_id,
+            'text': doc_text
+        })
 
 
     def find_docs(self, question, n_results, user_access_role):
