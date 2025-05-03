@@ -3,7 +3,7 @@
 ## Header
 All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
 - **Bearer Token**: `Bearer BEARER_TOKEN`
-The Berer Token must be generated with `jsonwebtoken` and its payload must encode:
+The Bearer Token must be generated with `jsonwebtoken` and its payload must encode:
 ```json
 {
   "company_id": USER_COMPANY_IDENTIFIER,
