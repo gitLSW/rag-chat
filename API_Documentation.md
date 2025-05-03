@@ -1,6 +1,10 @@
 ### API Documentation
 
+#### Header
 All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
+- **Bearer Token**: `Bearer BEARER_TOKEN`
+- **API Key**: `x-api-key API_KEY`
+
 
 #### 1. `POST /createAccessGroup`
 - **Purpose**: Creates a new access group for document permissions.
