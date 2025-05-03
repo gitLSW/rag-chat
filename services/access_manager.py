@@ -45,73 +45,6 @@ class AccessManager:
                 self.valid_access_groups = doc_data['access_groups']
 
 
-    def has_doc_access(self, doc_id, user_access_role):
-        access_groups = self.docs_access.get(doc_id)
-        if not access_groups:
-            raise AccessNotFoundError(doc_id)
-
-        if not user_access_role in access_groups:
-            raise InsufficientAccessError(user_access_role, doc_id)
-        return access_groups
-    
-
-    # Creates or overrides file
-    def create_doc_access(self, doc_id, new_access_groups, user_access_role):
-        try:
-            # If the file already exists and the user has permission to override, it will be overwritten
-            access_groups = self.has_doc_access(doc_id, user_access_role)
-            # Overrides are allowed in the access_data
-        except AccessNotFoundError as e:
-            pass # Expected and correct behavior
-
-        return self._set_doc_access(doc_id, access_groups, new_access_groups)
-
-
-    # Updates access
-    def update_doc_access(self, doc_id, new_access_groups, user_access_role):
-        # If the access is missing a error will be raised. The file should first be created.
-        access_groups = self.has_doc_access(doc_id, user_access_role)
-        return self._set_doc_access(doc_id, access_groups, new_access_groups)
-
-
-    def _set_doc_access(self, doc_id, old_access_groups, new_access_groups):
-        # Validate new_access_groups
-        new_access_groups = set(new_access_groups or [])
-        new_access_groups.add('admin') # Always add admin
-        invalid_access_groups = [access_group for access_group in new_access_groups if access_group not in self.valid_access_groups]
-        
-        if len(invalid_access_groups) > 0:
-            raise HTTPException(409, f"Unregistered access_groups {invalid_access_groups}. Register them at '/createAccessGroup' first.")
-        
-        # Create new_access_groups
-        if new_access_groups == old_access_groups:
-            return new_access_groups
-
-        lock = FileLock(self.access_data_path)
-        with lock:
-            with open(self.access_data_path, 'w') as f:
-                self.docs_access[doc_id] = new_access_groups
-                json.dump({
-                    'docs_access': self.docs_access,
-                    'access_groups': self.valid_access_groups
-                }, f)
-        return list(new_access_groups)
-    
-    
-    def delete_doc_access(self, doc_id, user_access_role):
-        access_groups = self.has_doc_access(doc_id, user_access_role)
-        lock = FileLock(self.access_data_path)
-        with lock:
-            with open(self.access_data_path, 'w') as f:
-                del self.docs_access[doc_id]
-                json.dump({
-                    'docs_access': self.docs_access,
-                    'access_groups': self.valid_access_groups
-                }, f)
-        return access_groups
-        
-    
-    # TODO: Create a access_groups file !
     def create_access_group(self, access_group, user_access_role):
         """
         Creates an LLM user with restricted access to a company-specific view.
@@ -160,3 +93,69 @@ class AccessManager:
                 }, f)
 
         return OKResponse(f'Successfully added {access_group}')
+
+
+    def has_doc_access(self, doc_id, user_access_role):
+        access_groups = self.docs_access.get(doc_id)
+        if not access_groups:
+            raise AccessNotFoundError(doc_id)
+
+        if not user_access_role in access_groups:
+            raise InsufficientAccessError(user_access_role, doc_id)
+        return access_groups
+    
+
+    # Creates or overrides file
+    def create_doc_access(self, doc_id, new_access_groups, user_access_role):
+        try:
+            # If the file already exists and the user has permission to override, it will be overwritten
+            access_groups = self.has_doc_access(doc_id, user_access_role)
+            # Overrides are allowed in the access_data
+        except AccessNotFoundError as e:
+            pass # Expected and correct behavior
+
+        return self._set_doc_access(doc_id, access_groups, new_access_groups)
+
+
+    # Updates access
+    def update_doc_access(self, doc_id, new_access_groups, user_access_role):
+        # If the access is missing a error will be raised. The file should first be created.
+        access_groups = self.has_doc_access(doc_id, user_access_role)
+        return self._set_doc_access(doc_id, access_groups, new_access_groups)
+    
+    
+    def delete_doc_access(self, doc_id, user_access_role):
+        access_groups = self.has_doc_access(doc_id, user_access_role)
+        lock = FileLock(self.access_data_path)
+        with lock:
+            with open(self.access_data_path, 'w') as f:
+                del self.docs_access[doc_id]
+                json.dump({
+                    'docs_access': self.docs_access,
+                    'access_groups': self.valid_access_groups
+                }, f)
+        return access_groups
+        
+    
+    def _set_doc_access(self, doc_id, old_access_groups, new_access_groups):
+        # Validate new_access_groups
+        new_access_groups = set(new_access_groups or [])
+        new_access_groups.add('admin') # Always add admin
+        invalid_access_groups = [access_group for access_group in new_access_groups if access_group not in self.valid_access_groups]
+        
+        if len(invalid_access_groups) > 0:
+            raise HTTPException(409, f"Unregistered access_groups {invalid_access_groups}. Register them at '/createAccessGroup' first.")
+        
+        # Set new_access_groups
+        if new_access_groups == old_access_groups:
+            return new_access_groups
+
+        lock = FileLock(self.access_data_path)
+        with lock:
+            with open(self.access_data_path, 'w') as f:
+                self.docs_access[doc_id] = new_access_groups
+                json.dump({
+                    'docs_access': self.docs_access,
+                    'access_groups': self.valid_access_groups
+                }, f)
+        return list(new_access_groups)
