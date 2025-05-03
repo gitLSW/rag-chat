@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from filelock import FileLock
 from pymongo import MongoClient
+from rag_service import OKResponse
 
 
 load_dotenv()
@@ -132,3 +133,5 @@ class AccessManager:
                 'collection': view_name
             }]
         })
+        
+        return OKResponse(f'Successfully added {access_group}')
