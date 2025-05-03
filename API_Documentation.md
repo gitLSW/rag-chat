@@ -86,7 +86,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 - **Response Schema**: Success/Failure Response
 
 #### 4. `POST /createDocument`
-- **Purpose**: Create or replace a document file along with its metadata that must conform to a predefined schema. Can override an existing document.
+- **Purpose**: Create or fully override a document file along with its metadata that must conform to a predefined schema.
 - **Request Schema**:
 ```json
 {
@@ -266,8 +266,8 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 
-#### 7. `POST /getDocumentText`
-- **Purpose**: Retrieves the raw text content of a document.
+#### 7. `POST /getDocumentData`
+- **Purpose**: Retrieves the extracted data and text content of an existing document.
 - **Request Schema**:
 ```json
 {
@@ -293,6 +293,22 @@ All endpoints require a Bearer Token authentication and most require an addition
     "text": {
       "type": "string",
       "description": "The extracted text content of the document"
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "docType": {"type": "string"},
+          "accessGroups": {
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1
+          }
+      },
+      "required": ["id", "path", "docType", "accessGroups"],
+      "description": "The processed document data including extracted metadata",
+      "additionalProperties": true
     }
   },
   "required": ["doc_id", "text"]
