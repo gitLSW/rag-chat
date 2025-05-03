@@ -35,7 +35,7 @@ class CreateDocSchemaReq(BaseModel):
 
 class AddDocReq(BaseModel):
     file: UploadFile = File(...)
-    doc_data: dict # = {
+    docData: dict # = {
     #     id: str
     #     accessGroups: List[str]
     #     path: Optional[str] = None
@@ -139,16 +139,16 @@ async def update_doc(req: Request):
     return rag_service.update_doc_data(doc_data, req.state.user_role)
 
 
+@app.post("/getDocument")
+async def get_doc(req: DocReq):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.get_doc(req.id, req.state.user_access_role)
+
+
 @app.post("/deleteDocument")
 async def delete_doc(req: DocReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.delete_doc(req.id, req.state.user_role)
-
-
-@app.post("/getDocumentText")
-async def add_doc_schema(req: DocReq):
-    rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.get_doc_text(req.id, req.state.user_access_role)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
