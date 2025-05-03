@@ -204,6 +204,9 @@ class RAGService:
             raise HTTPException(400, 'docData must contain an "id"')
         
         old_doc = self.json_db.find_one({ '_id': doc_id })
+        if not old_doc:
+            raise HTTPException(409, f"Doc {doc_id} doesn't exist! Upload it to /createDocument first.")
+        
         old_doc_type = old_doc['docType']
         merged_doc = { **old_doc, **doc_data }
         
