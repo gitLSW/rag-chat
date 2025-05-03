@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 security = HTTPBearer()
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
+class TokenMiddleware(BaseHTTPMiddleware):
     """Middleware to validate JWT tokens on every request."""
 
     def __init__(self, app, public_key_url):

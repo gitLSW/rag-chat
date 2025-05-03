@@ -10,7 +10,8 @@ from pydantic import BaseModel
 
 from services.rag_service import RAGService
 from services.doc_extractor import DocExtractor
-from auth_middleware import AuthMiddleware
+from auth.token_middleware import TokenMiddleware
+from auth.api_access_middlware import APIAccessMiddleware
 
 # Load environment variables
 load_dotenv()
@@ -25,7 +26,10 @@ PUBLIC_KEY_URL = os.getenv('PUBLIC_KEY_SOURCE_URL')
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
 
-class AddDocSchemaReq(BaseModel):
+class CreateAccessGroupReq(BaseModel):
+    access_group: str
+
+class CreateDocSchemaReq(BaseModel):
     docType: str
     docSchema: dict # JSON Schema
 
@@ -68,9 +72,9 @@ def get_company_rag_service(company_id):
 # -----------------------------
 
 app = FastAPI()
+app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
 app.add_middleware(
-    AuthMiddleware,
-    public_key_url=PUBLIC_KEY_URL,
+    APIAccessMiddleware,
     api_key=API_KEY,
     allowed_ips=API_ALLOWED_IPs,
     exempt_paths={'/chat'}
@@ -78,13 +82,13 @@ app.add_middleware(
 
 
 @app.post("/createAccessGroup")
-async def create_access_group(req: Request):
+async def create_access_group(req: CreateAccessGroupReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
+    return rag_service.access_manager.create_access_group(req.access_group, req.state.user_access_role)
 
 
-@app.post("/createDocumentSchema")
-async def create_doc_schema(req: Request):
+@app.post("/addDocumentSchema")
+async def create_doc_schema(req: CreateDocSchemaReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
@@ -132,7 +136,7 @@ async def create_doc(req: AddDocReq):
 async def update_doc(req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
     doc_data = await req.json()
-    return rag_service.update_doc(doc_data, req.state.user_role)
+    return rag_service.update_doc_data(doc_data, req.state.user_role)
 
 
 @app.post("/deleteDocument")

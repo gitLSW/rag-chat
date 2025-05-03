@@ -16,7 +16,7 @@ from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
 
-from access_manager import AccessManager
+from access_manager import AccessManager, InsufficientAccessError
 from vllm import SamplingParams
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
@@ -113,7 +113,23 @@ class RAGService:
         return OKResponse(f'Successfully added new JSON schema for {doc_type}', data=json_schema)
 
 
-    async def add_doc(self, source_path, doc_data, user_access_role):
+    def delete_json_schema_type(self, doc_type, user_access_role):
+        if user_access_role != 'admin':
+            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+        
+        if self.json_db.find_one({ 'doc_type': doc_type }):
+            raise HTTPException(409, f'Cannot delete schema "{doc_type}" because it was already used to extract a document.')
+        
+        lock = FileLock(self.schemata_path)
+        with lock:
+            del self.doc_schemata[doc_type]
+            with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
+                f.write(json.dumps(self.doc_schemata))
+        
+        return OKResponse(f'Successfully deleted JSON schema for "{doc_type}"')
+    
+
+    async def create_doc(self, source_path, doc_data, user_access_role):
         doc_id = doc_data.get('id')
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
@@ -121,7 +137,7 @@ class RAGService:
         access_groups = doc_data.get('accessGroups')
         if not access_groups or len(access_groups) == 0:
             raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list')
-        
+        access_groups = list(set(access_groups.append('admin'))) # Always add admin
         # Validate user access and create if necessary
         self.access_manager.create_doc_access(doc_id, access_groups, user_access_role)
 
@@ -187,10 +203,11 @@ class RAGService:
             raise HTTPException(400, 'docData must contain an "id"')
         
         # Validate user access and update if necessary
-        new_access_groups = doc_data.get('accessGroups')
-        if not new_access_groups or len(new_access_groups) == 0:
-            raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list') 
-        self.access_manger.update_doc_access(doc_id, new_access_groups, user_access_role)
+        access_groups = doc_data.get('accessGroups')
+        if not access_groups or len(access_groups) == 0:
+            raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list')
+        access_groups = list(set(access_groups.append('admin'))) # Always add admin
+        self.access_manger.update_doc_access(doc_id, access_groups, user_access_role)
         
         old_doc = self.json_db.find_one({ '_id': doc_id })
         updated_doc = { **old_doc, **doc_data }
@@ -230,6 +247,14 @@ class RAGService:
 
         return OKResponse(detail=f'Successfully deleted Document {doc_id}', data=doc_data)
     
+
+    def get_doc_text(self, doc_id, user_access_role):
+        self.access_manager.has_doc_access(doc_id, user_access_role)
+
+        txt_path = f'./{self.company_id}/docs/{doc_id}.txt'
+        with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+
 
     def find_docs(self, question, n_results, user_access_role):
         """

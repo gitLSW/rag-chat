@@ -95,15 +95,18 @@ class AccessManager:
         
     
     # TODO: Create a access_groups file !
-    def add_access_role(access_role):
+    def create_access_group(self, access_group, user_access_role):
         """
         Creates an LLM user with restricted access to a company-specific view.
         
         Args:
             access_role: The access role level (determines which view they can access)
         """
+        if user_access_role != 'admin':
+            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+        
         # Create view that filters documents where the user's role is in access_groups
-        view_name = f'access_view_{role_name}'
+        view_name = f'access_view_{access_group}'
         company_db = self.db_client[self.company_id]
         if view_name not in company_db.list_collection_names():
                 company_db.command({
@@ -111,13 +114,13 @@ class AccessManager:
                     'viewOn': 'docs',
                     'pipeline': [{
                         '$match': {
-                            'access_groups': { '$in': [role_name] }
+                            'access_groups': { '$in': [access_group] }
                         }
                     }]
                 })
         
         # Configuration
-        username = f'llm_user_{self.company_id}_{access_role}'
+        username = f'llm_user_{self.company_id}_{access_group}'
         password = os.getenv(f'LLM_USER_{self.company_id}_PW')
         
         self.db_client['admin'].command({
@@ -125,7 +128,7 @@ class AccessManager:
             'pwd': password,
             'roles': [{
                 'role': 'read',
-                'db': db_name,
+                'db': self.company_id,
                 'collection': view_name
             }]
         })

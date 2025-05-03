@@ -2,7 +2,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, HTTPException
 
 
-class VerifySourceMiddleware(BaseHTTPMiddleware):
+class APIAccessMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, api_key, allowed_ips, exempt_paths=set()):
         super().__init__(app)
