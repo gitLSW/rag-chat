@@ -96,7 +96,7 @@ class RAGService:
             raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
         
         if doc_type in self.doc_schemata.keys():
-            raise ValueError(f'The document type {doc_type}, is already used by another JSON schema')
+            raise ValueError(f'The document type {doc_type}, is already used by another JSON schema.')
         
         json_type = json_schema.get('type')
         if not json_type or json_type != 'object':
@@ -110,7 +110,7 @@ class RAGService:
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(json.dumps(self.doc_schemata))
         
-        return OKResponse(f'Successfully added new JSON schema for {doc_type}', data=json_schema)
+        return OKResponse(f'Successfully added new JSON schema for {doc_type}', json_schema)
 
 
     def delete_json_schema_type(self, doc_type, user_access_role):
@@ -119,6 +119,8 @@ class RAGService:
         
         if self.json_db.find_one({ 'doc_type': doc_type }):
             raise HTTPException(409, f'Cannot delete schema "{doc_type}" because it was already used to extract a document.')
+        
+        deleted_schema = self.doc_schemata[doc_type]
         
         lock = FileLock(self.schemata_path)
         with lock:
@@ -129,10 +131,14 @@ class RAGService:
         return OKResponse(f'Successfully deleted JSON schema for "{doc_type}"')
     
 
-    async def create_doc(self, source_path, doc_data, user_access_role):
+    async def create_doc(self, source_path, doc_data, allow_override, user_access_role):
         doc_id = doc_data.get('id')
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
+        
+        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+        if not allow_override and os.path.exists(txt_path):
+            raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
         
         access_groups = doc_data.get('accessGroups')
         if not access_groups or len(access_groups) == 0:
@@ -188,16 +194,15 @@ class RAGService:
             )
 
         # Save the extracted content in .txt file
-        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
         lock = FileLock(txt_path)
         with lock:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(doc_text)
 
-        return OKResponse(detail=f'Successfully processed Document', data=doc_data)
+        return OKResponse(f'Successfully processed Document', doc_data)
 
 
-    def update_doc_data(self, doc_data, user_access_role):
+    def update_doc_data(self, doc_data, merge_existing, user_access_role):
         doc_id = doc_data.get('id')
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
@@ -210,23 +215,30 @@ class RAGService:
         self.access_manger.update_doc_access(doc_id, access_groups, user_access_role)
         
         old_doc = self.json_db.find_one({ '_id': doc_id })
-        updated_doc = { **old_doc, **doc_data }
+        old_doc_type = old_doc['docType']
+        merged_doc = { **old_doc, **doc_data }
         
-        doc_type = updated_doc.get('docType')
-        if not doc_type:
-            raise HTTPException(500, 'docType was not provided and could not automatically be identifed')
-        
+        doc_type = merged_doc.get('docType')
+        if doc_type != old_doc_type:
+            merge_existing = False
+            
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
             raise HTTPException(422, 'Unknown doc_type. Register the JSON schema at /createDocSchema first')
-
         doc_schema = self._merge_with_base_schema(doc_schema)
         
-        # Validate and replace
+        updated_doc = merged_doc if merge_existing else doc_data
+        
+        # If merge wasn't allowed and doc_data is missing required fields, take the old ones
+        if not updated_doc.get('access_groups'):
+            updated_doc['path'] = old_doc['access_groups']
+        if not updated_doc.get('path'):
+            updated_doc['path'] = old_doc['path']
+        
         jsonschema.validate(updated_doc, doc_schema)
         self.json_db.replace_one({ '_id': doc_id }, updated_doc)
-
-        return OKResponse(detail=f'Successfully updated Document {doc_id}', data=updated_doc)
+        
+        return OKResponse(f'Successfully updated Document {doc_id}', updated_doc)
 
 
     def get_doc(self, doc_id, user_access_role):
@@ -237,11 +249,9 @@ class RAGService:
             doc_text = f.read()
             
         doc_data = self.json_db.find_one({ '_id': doc_id })
+        doc_data['text'] = doc_text
         
-        return OKResponse(detail=f'Successfully read Document {doc_id}', data={
-            'text': doc_text,
-            'data': doc_data
-        })
+        return OKResponse(f'Successfully retrieved Document {doc_id}', doc_data)
         
     
     def delete_doc(self, doc_id, user_access_role):
@@ -259,7 +269,7 @@ class RAGService:
         # Delete from json DB
         doc_data = self.json_db.delete_one({ '_id': doc_id })
 
-        return OKResponse(detail=f'Successfully deleted Document {doc_id}', data=doc_data)
+        return OKResponse(f'Successfully deleted Document {doc_id}', doc_data)
     
 
     def find_docs(self, question, n_results, user_access_role):
@@ -291,7 +301,7 @@ class RAGService:
             if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
                 valid_docs_data.append(doc_data)
 
-        return OKResponse(detail=f'Found {len(valid_docs_data}', data=valid_docs_data)
+        return OKResponse(f'Found {len(valid_docs_data}', valid_docs_data)
 
 
     async def extract_json(self, text, doc_type=None):
