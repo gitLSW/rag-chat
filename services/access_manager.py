@@ -27,72 +27,88 @@ class InsufficientAccessError(HTTPException):
 class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
-        self.access_table_path = f'./{company_id}/access_table.json'
+        self.access_data_path = f'./{company_id}/access_data.json'
         
         # Connect to admin database (requires admin privileges)
         self.db_client = MongoClient(MONGO_DB_URL)
 
-        if not os.path.exists(self.access_table_path):
-            self.access_rights = {}
+        if not os.path.exists(self.access_data_path):
+            self.docs_access = {}
+            self.valid_access_groups = {}
             return
 
-        lock = FileLock(self.access_table_path)
+        lock = FileLock(self.access_data_path)
         with lock:
-            with open(self.access_table_path, "r") as f:
-                self.access_rights = json.load(f)
+            with open(self.access_data_path, "r") as f:
+                doc_data = json.load(f)
+                self.docs_access = doc_data['docs_access']
+                self.valid_access_groups = doc_data['access_groups']
 
 
     def has_doc_access(self, doc_id, user_access_role):
-        access_roles = self.access_rights.get(doc_id)
-        if access_roles is None:
+        access_groups = self.docs_access.get(doc_id)
+        if not access_groups:
             raise AccessNotFoundError(doc_id)
 
-        if not user_access_role in access_roles:
+        if not user_access_role in access_groups:
             raise InsufficientAccessError(user_access_role, doc_id)
-        return access_roles
+        return access_groups
     
 
     # Creates or overrides file
     def create_doc_access(self, doc_id, new_access_groups, user_access_role):
         try:
             # If the file already exists and the user has permission to override, it will be overwritten
-            access_roles = self.has_doc_access(doc_id, user_access_role)
-            # Overrides are allowed in the access_table
+            access_groups = self.has_doc_access(doc_id, user_access_role)
+            # Overrides are allowed in the access_data
         except AccessNotFoundError as e:
             pass # Expected and correct behavior
 
-        lock = FileLock(self.access_table_path)
-        with lock:
-            with open(self.access_table_path, 'w') as f:
-                self.access_rights[doc_id] = new_access_groups
-                json.dump(self.access_rights, f)
-        return access_roles
+        return self._set_doc_access(doc_id, access_groups, new_access_groups)
 
 
     # Updates access
     def update_doc_access(self, doc_id, new_access_groups, user_access_role):
         # If the access is missing a error will be raised. The file should first be created.
-        access_roles = self.has_doc_access(doc_id, user_access_role)
+        access_groups = self.has_doc_access(doc_id, user_access_role)
+        return self._set_doc_access(doc_id, access_groups, new_access_groups)
 
-        if not new_access_groups or new_access_groups == access_roles:
-            return access_roles
 
-        lock = FileLock(self.access_table_path)
+    def _set_doc_access(self, doc_id, old_access_groups, new_access_groups):
+        # Validate new_access_groups
+        new_access_groups = set(new_access_groups or [])
+        new_access_groups.add('admin') # Always add admin
+        invalid_access_groups = [access_group for access_group in new_access_groups if access_group not in self.valid_access_groups]
+        
+        if len(invalid_access_groups) > 0:
+            raise HTTPException(409, f"Unregistered access_groups {invalid_access_groups}. Register them at '/createAccessGroup' first.")
+        
+        # Create new_access_groups
+        if new_access_groups == old_access_groups:
+            return new_access_groups
+
+        lock = FileLock(self.access_data_path)
         with lock:
-            with open(self.access_table_path, 'w') as f:
-                self.access_rights[doc_id] = new_access_groups
-                json.dump(self.access_rights, f)
-        return access_roles
+            with open(self.access_data_path, 'w') as f:
+                self.docs_access[doc_id] = new_access_groups
+                json.dump({
+                    'docs_access': self.docs_access,
+                    'access_groups': self.valid_access_groups
+                }, f)
+        return list(new_access_groups)
     
     
     def delete_doc_access(self, doc_id, user_access_role):
-        access_roles = self.has_doc_access(doc_id, user_access_role)
-        lock = FileLock(self.access_table_path)
+        access_groups = self.has_doc_access(doc_id, user_access_role)
+        lock = FileLock(self.access_data_path)
         with lock:
-            with open(self.access_table_path, 'w') as f:
-                del self.access_rights[doc_id]
-                json.dump(self.access_rights, f)
-        return access_roles
+            with open(self.access_data_path, 'w') as f:
+                del self.docs_access[doc_id]
+                json.dump({
+                    'docs_access': self.docs_access,
+                    'access_groups': self.valid_access_groups
+                }, f)
+        return access_groups
         
     
     # TODO: Create a access_groups file !
@@ -134,4 +150,13 @@ class AccessManager:
             }]
         })
         
+        lock = FileLock(self.access_data_path)
+        with lock:
+            with open(self.access_data_path, 'w') as f:
+                self.valid_access_groups.add(access_group)
+                json.dump({
+                    'docs_access': self.docs_access,
+                    'access_groups': self.valid_access_groups
+                }, f)
+
         return OKResponse(f'Successfully added {access_group}')

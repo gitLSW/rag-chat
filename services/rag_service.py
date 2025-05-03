@@ -140,12 +140,8 @@ class RAGService:
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
         
-        access_groups = doc_data.get('accessGroups')
-        if not access_groups or len(access_groups) == 0:
-            raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list')
-        access_groups = list(set(access_groups.append('admin'))) # Always add admin
         # Validate user access and create if necessary
-        self.access_manager.create_doc_access(doc_id, access_groups, user_access_role)
+        doc_data['access_groups'] = self.access_manager.create_doc_access(doc_id, doc_data.get('accessGroups'), user_access_role)
 
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
@@ -224,11 +220,9 @@ class RAGService:
         
         # Validate user access and update if necessary
         access_groups = updated_doc.get('accessGroups')
-        if not access_groups or len(access_groups) == 0:
+        if not access_groups:
             access_groups = old_doc['access_groups']
-        access_groups = list(set(access_groups.append('admin'))) # Always add admin
-        self.access_manger.update_doc_access(doc_id, access_groups, user_access_role)
-        updated_doc['access_groups'] = access_groups
+        updated_doc['access_groups'] = self.access_manager.update_doc_access(doc_id, access_groups, user_access_role)
         
         # If merge wasn't allowed and doc_data is missing a path, take the old one
         if not updated_doc.get('path'):
@@ -255,7 +249,7 @@ class RAGService:
     
     def delete_doc(self, doc_id, user_access_role):
         # Validate user access and delete if necessary
-        self.access_manger.delete_doc_access(doc_id, user_access_role)
+        self.access_manager.delete_doc_access(doc_id, user_access_role)
 
         txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
 
@@ -293,7 +287,7 @@ class RAGService:
         valid_docs_data = {}
         for doc_data in nearest_neighbors:
             try:
-                self.access_manger.has_doc_access(doc_data['id'], user_access_role)
+                self.access_manager.has_doc_access(doc_data['id'], user_access_role)
             except InsufficientAccessError as e:
                 continue
             
