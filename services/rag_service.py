@@ -207,13 +207,6 @@ class RAGService:
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
         
-        # Validate user access and update if necessary
-        access_groups = doc_data.get('accessGroups')
-        if not access_groups or len(access_groups) == 0:
-            raise HTTPException(400, 'docData must contain a non-empty "accessGroups" list')
-        access_groups = list(set(access_groups.append('admin'))) # Always add admin
-        self.access_manger.update_doc_access(doc_id, access_groups, user_access_role)
-        
         old_doc = self.json_db.find_one({ '_id': doc_id })
         old_doc_type = old_doc['docType']
         merged_doc = { **old_doc, **doc_data }
@@ -229,9 +222,15 @@ class RAGService:
         
         updated_doc = merged_doc if merge_existing else doc_data
         
-        # If merge wasn't allowed and doc_data is missing required fields, take the old ones
-        if not updated_doc.get('access_groups'):
-            updated_doc['path'] = old_doc['access_groups']
+        # Validate user access and update if necessary
+        access_groups = updated_doc.get('accessGroups')
+        if not access_groups or len(access_groups) == 0:
+            access_groups = old_doc['access_groups']
+        access_groups = list(set(access_groups.append('admin'))) # Always add admin
+        self.access_manger.update_doc_access(doc_id, access_groups, user_access_role)
+        updated_doc['access_groups'] = access_groups
+        
+        # If merge wasn't allowed and doc_data is missing a path, take the old one
         if not updated_doc.get('path'):
             updated_doc['path'] = old_doc['path']
         
