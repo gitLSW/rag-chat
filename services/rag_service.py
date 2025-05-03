@@ -96,11 +96,11 @@ class RAGService:
             raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
         
         if doc_type in self.doc_schemata.keys():
-            raise ValueError(f'The document type {doc_type}, is already used by another JSON schema.')
+            raise HTTPException(409, f'The document type {doc_type}, is already used by another JSON schema.')
         
         json_type = json_schema.get('type')
         if not json_type or json_type != 'object':
-            raise ValueError('The JSON schema must be an object type')
+            raise HTTPException(400, 'The JSON schema must be an object type')
 
         jsonschema.Draft7Validator.check_schema(json_schema) # will raise jsonschema.exceptions.SchemaError if invalid
         
