@@ -29,12 +29,13 @@ PUBLIC_KEY_URL = os.getenv('PUBLIC_KEY_SOURCE_URL')
 class CreateAccessGroupReq(BaseModel):
     access_group: str
 
-class CreateDocSchemaReq(BaseModel):
+class AddDocSchemaReq(BaseModel):
     docType: str
     docSchema: dict # JSON Schema
 
-class AddDocReq(BaseModel):
-    file: UploadFile = File(...)
+class UpdateDocReq(BaseModel):
+    mergeExisting: bool = False
+    allowOverride: bool = True
     docData: dict # = {
     #     id: str
     #     accessGroups: List[str]
@@ -42,6 +43,9 @@ class AddDocReq(BaseModel):
     #     docType: Optional[str] = None
     #     # more fields for the doc_data, which are doc_type's JSON Schema
     # }
+
+class CreateDocReq(UpdateDocReq):
+    file: UploadFile = File(...)
 
 class DocReq(BaseModel):
     id: str
@@ -88,7 +92,7 @@ async def create_access_group(req: CreateAccessGroupReq):
 
 
 @app.post("/addDocumentSchema")
-async def create_doc_schema(req: CreateDocSchemaReq):
+async def add_doc_schema(req: AddDocSchemaReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
@@ -100,7 +104,7 @@ async def delete_doc_schema(req: Request):
 
 
 @app.post("/createDocument")
-async def create_doc(req: AddDocReq):
+async def create_doc(req: CreateDocReq):
     mime_type, _ = guess_type(req.file.filename)
 
     # Check if MIME type is supported by DocExtractor
@@ -124,7 +128,7 @@ async def create_doc(req: AddDocReq):
 
     # Add and process doc
     rag_service = get_company_rag_service(req.state.company_id)
-    res = await rag_service.create_doc(source_path, req.docData, req.state.user_role)
+    res = await rag_service.create_doc(source_path, req.docData, req.allowOverride, req.mergeExisting, req.state.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
@@ -133,10 +137,9 @@ async def create_doc(req: AddDocReq):
 
 
 @app.post("/updateDocument")
-async def update_doc(req: Request):
+async def update_doc(req: UpdateDocReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    doc_data = await req.json()
-    return rag_service.update_doc_data(doc_data, req.state.user_role)
+    return rag_service.update_doc_data(req.docData, req.allowOverride, req.mergeExisting, req.state.user_role)
 
 
 @app.post("/getDocument")
