@@ -18,6 +18,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 - **Response Schema**: Success/Failure Response
+- **Access Control**: Requires admin role
 
 #### 2. `POST /addDocumentSchema`
 - **Purpose**: Defines a new JSON schema for a specific document type. Cannot override existing Schemata.
@@ -39,34 +40,8 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["docType", "docSchema"]
 }
 ```
-- **Response Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "detail": {
-      "type": "string",
-      "description": "Success message"
-    },
-    "data": {
-      "type": "object",
-      "properties": {
-          "id": {"type": "string"},
-          "path": {"type": "string"},
-          "docType": {"type": "string"},
-          "accessGroups": {
-              "type": "array",
-              "items": {"type": "string"},
-              "minItems": 1
-          }
-      },
-      "required": ["id", "path", "docType", "accessGroups"],
-      "description": "The added JSON schema, combined with the server's required base document schema",
-      "additionalProperties": true
-    }
-  }
-}
-```
+- **Response Schema**: Success/Failure Response with the added schema
+- **Access Control**: Requires admin role
 
 #### 3. `POST /deleteDocumentSchema`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
@@ -75,18 +50,19 @@ All endpoints require a Bearer Token authentication and most require an addition
 {
   "type": "object",
   "properties": {
-    "doc_type": {
+    "docType": {
       "type": "string",
-      "description": "The type identifier for documents using this schema"
+      "description": "The type identifier of the schema to delete"
     }
   },
-  "required": ["doc_type"]
+  "required": ["docType"]
 }
 ```
 - **Response Schema**: Success/Failure Response
+- **Access Control**: Requires admin role
 
 #### 4. `POST /createDocument`
-- **Purpose**: Create or fully override a document file along with its metadata that must conform to a predefined schema.
+- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema.
 - **Request Schema**:
 ```json
 {
@@ -97,7 +73,12 @@ All endpoints require a Bearer Token authentication and most require an addition
       "format": "binary",
       "description": "The document file to upload"
     },
-    "doc_data": {
+    "allowOverride": {
+      "type": "boolean",
+      "description": "Whether to allow overriding an existing document",
+      "default": true
+    },
+    "docData": {
       "type": "object",
       "properties": {
         "id": {
@@ -106,13 +87,11 @@ All endpoints require a Bearer Token authentication and most require an addition
         },
         "path": {
           "type": "string",
-          "description": "Optional path for organizing documents",
-          "nullable": true
+          "description": "Optional path for organizing documents"
         },
         "docType": {
           "type": "string",
-          "description": "Document type that matches a predefined schema",
-          "nullable": true
+          "description": "Document type that matches a predefined schema"
         },
         "accessGroups": {
           "type": "array",
@@ -127,7 +106,7 @@ All endpoints require a Bearer Token authentication and most require an addition
       }
     }
   },
-  "required": ["file", "doc_data"]
+  "required": ["file", "docData"]
 }
 ```
 - **Response Schema**:
@@ -135,63 +114,71 @@ All endpoints require a Bearer Token authentication and most require an addition
 {
   "type": "object",
   "properties": {
-    "detail": {
-      "type": "string",
-      "description": "Success message"
-    },
+    "detail": {"type": "string"},
     "data": {
       "type": "object",
       "properties": {
-          "id": {"type": "string"},
-          "path": {"type": "string"},
-          "docType": {"type": "string"},
-          "accessGroups": {
-              "type": "array",
-              "items": {"type": "string"},
-              "minItems": 1
-          }
+        "id": {"type": "string"},
+        "path": {"type": "string"},
+        "docType": {"type": "string"},
+        "accessGroups": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        }
       },
-      "required": ["id", "path", "docType", "accessGroups"],
-      "description": "The processed document data including extracted metadata",
       "additionalProperties": true
     }
-  },
-  "required": ["details", "data"]
+  }
 }
 ```
 
 #### 5. `POST /updateDocument`
-- **Purpose**: Override an existing document's metadata.
-- **Request Schema**: Same as `/createDocument`'s `doc_data` property.
+- **Purpose**: Updates an existing document's metadata.
+- **Request Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "mergeExisting": {
+      "type": "boolean",
+      "description": "Whether to merge with existing data",
+      "default": false
+    },
+    "docData": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "path": {"type": "string"},
+        "docType": {"type": "string"},
+        "accessGroups": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["docData"]
+}
+```
+- **Response Schema**: Same as createDocument response
+
+#### 6. `POST /getDocument`
+- **Purpose**: Retrieves a document's metadata and text content.
+- **Request Schema**:
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
       "type": "string",
-      "description": "Unique identifier for the document"
-    },
-    "path": {
-      "type": "string",
-      "description": "Optional path for organizing documents",
-      "nullable": true
-    },
-    "docType": {
-      "type": "string",
-      "description": "Document type that matches a predefined schema",
-      "nullable": true
-    },
-    "accessGroups": {
-      "type": "array",
-      "items": {"type": "string"},
-      "minItems": 1,
-      "description": "List of groups with access to this document"
+      "description": "The ID of the document to retrieve"
     }
   },
-  "required": ["id", "accessGroups"],
-  "additionalProperties": {
-    "description": "Additional properties must match the schema defined for the docType"
-  }
+  "required": ["id"]
 }
 ```
 - **Response Schema**:
@@ -199,32 +186,27 @@ All endpoints require a Bearer Token authentication and most require an addition
 {
   "type": "object",
   "properties": {
-    "detail": {
-      "type": "string",
-      "description": "Success message"
-    },
+    "detail": {"type": "string"},
     "data": {
       "type": "object",
       "properties": {
-          "id": {"type": "string"},
-          "path": {"type": "string"},
-          "docType": {"type": "string"},
-          "accessGroups": {
-              "type": "array",
-              "items": {"type": "string"},
-              "minItems": 1
-          }
+        "text": {"type": "string"},
+        "id": {"type": "string"},
+        "path": {"type": "string"},
+        "docType": {"type": "string"},
+        "accessGroups": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        }
       },
-      "required": ["id", "path", "docType", "accessGroups"],
-      "description": "The updated document data",
       "additionalProperties": true
     }
-  },
-  "required": ["details", "data"]
+  }
 }
 ```
 
-#### 6. `POST /deleteDocument`
+#### 7. `POST /deleteDocument`
 - **Purpose**: Deletes a document by its ID.
 - **Request Schema**:
 ```json
@@ -239,89 +221,7 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["id"]
 }
 ```
-- **Response Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "detail": {
-      "type": "string",
-      "description": "Success message"
-    },
-    "data": {
-      "type": "object",
-      "properties": {
-          "id": {"type": "string"},
-          "path": {"type": "string"},
-          "docType": {"type": "string"},
-          "accessGroups": {
-              "type": "array",
-              "items": {"type": "string"},
-              "minItems": 1
-          }
-      },
-      "required": ["id", "path", "docType", "accessGroups"],
-      "description": "The deleted document data",
-      "additionalProperties": true
-    }
-  },
-  "required": ["details", "data"]
-}
-```
-
-#### 7. `POST /getDocumentData`
-- **Purpose**: Retrieves the extracted data and text content of an existing document.
-- **Request Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "The ID of the document to read"
-    }
-  },
-  "required": ["id"]
-}
-```
-- **Response Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "detail": {
-      "type": "string",
-      "description": "Success message"
-    },
-    "data": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "description": "The extracted text content of the document"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-              "id": {"type": "string"},
-              "path": {"type": "string"},
-              "docType": {"type": "string"},
-              "accessGroups": {
-                  "type": "array",
-                  "items": {"type": "string"},
-                  "minItems": 1
-              }
-          },
-          "required": ["id", "path", "docType", "accessGroups"],
-          "description": "The processed document data including extracted metadata",
-          "additionalProperties": true
-        }
-      },
-      "required": ["doc_id", "text", "data"]
-    },
-  "required": ["details", "data"]
-}
-```
+- **Response Schema**: Success/Failure Response with deleted document data
 
 #### 8. `POST /search`
 - **Purpose**: Performs semantic search across documents.
@@ -336,7 +236,7 @@ All endpoints require a Bearer Token authentication and most require an addition
     },
     "searchDepth": {
       "type": "integer",
-      "description": "Number of results to return. The actual returned number of found Documents may vary.",
+      "description": "Number of results to return",
       "default": 10
     }
   },
@@ -348,25 +248,15 @@ All endpoints require a Bearer Token authentication and most require an addition
 {
   "type": "object",
   "properties": {
-    "detail": {
-      "type": "string",
-      "description": "Number of found documents"
-    },
+    "detail": {"type": "string"},
     "data": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "docId": {"type": "string"},
-          "pageNum": {
-            "type": "integer",
-            "description": "Page number where match was found",
-            "nullable": true
-          },
-          "docType": {
-            "type": "string",
-            "description": "Document's JSON schema type"
-          }
+          "pageNum": {"type": "integer"},
+          "docType": {"type": "string"}
         }
       }
     }
@@ -375,7 +265,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 ```
 
 #### 9. `WebSocket /chat`
-- **Purpose**: Opens a web socket connection, which streams the LLM response as chunks in real-time.
+- **Purpose**: Opens a web socket connection for streaming LLM responses.
 - **Request Schema**:
 ```json
 {
@@ -394,4 +284,4 @@ All endpoints require a Bearer Token authentication and most require an addition
   "required": ["question"]
 }
 ```
-- **Response Schema**: It uses a web socket connection.
+- **Response**: Streams text responses through the WebSocket connection
