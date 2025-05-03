@@ -4,24 +4,25 @@ All endpoints require a Bearer Token authentication and most require an addition
 
 #### 1. `POST /createAccessGroup`
 - **Purpose**: Creates a new access group for document permissions.
+- **Access Control**: Requires admin role
 - **Request Schema**:
 ```json
 {
   "type": "object",
   "properties": {
-    "access_group": {
+    "accessGroup": {
       "type": "string",
       "description": "The name/identifier of the access group to create"
     }
   },
-  "required": ["access_group"]
+  "required": ["accessGroup"]
 }
 ```
 - **Response Schema**: Success/Failure Response
-- **Access Control**: Requires admin role
 
 #### 2. `POST /addDocumentSchema`
 - **Purpose**: Defines a new JSON schema for a specific document type. Cannot override existing Schemata.
+- **Access Control**: Requires admin role
 - **Request Schema**:
 ```json
 {
@@ -41,10 +42,10 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 - **Response Schema**: Success/Failure Response with the added schema
-- **Access Control**: Requires admin role
 
 #### 3. `POST /deleteDocumentSchema`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
+- **Access Control**: Requires admin role
 - **Request Schema**:
 ```json
 {
@@ -59,7 +60,6 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 - **Response Schema**: Success/Failure Response
-- **Access Control**: Requires admin role
 
 #### 4. `POST /createDocument`
 - **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema.
