@@ -311,7 +311,7 @@ All endpoints require a Bearer Token authentication and most require an addition
       "additionalProperties": true
     }
   },
-  "required": ["doc_id", "text"]
+  "required": ["doc_id", "text", "data"]
 }
 ```
 
