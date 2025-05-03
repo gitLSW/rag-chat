@@ -26,6 +26,10 @@ PUBLIC_KEY_URL = os.getenv('PUBLIC_KEY_SOURCE_URL')
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
 
+class SemanticSearchReq(BaseModel):
+    question: str
+    searchDepth: int = 10
+
 class CreateAccessGroupReq(BaseModel):
     access_group: str
 
@@ -33,26 +37,29 @@ class AddDocSchemaReq(BaseModel):
     docType: str
     docSchema: dict # JSON Schema
 
+class DocReq(BaseModel):
+    id: str
+
 class UpdateDocReq(BaseModel):
     mergeExisting: bool = False
+    docData: dict # = {
+    #     id: str
+    #     accessGroups: Optional[List[str]] = oldDocData.accessGroups
+    #     path: Optional[str] = oldDocData.path
+    #     docType: Optional[str] = oldDocData.docType
+    #     # more fields according to the doc_type's JSON Schema
+    # }
+
+class CreateDocReq(BaseModel):
+    file: UploadFile = File(...)
     allowOverride: bool = True
     docData: dict # = {
     #     id: str
     #     accessGroups: List[str]
-    #     path: Optional[str] = None
-    #     docType: Optional[str] = None
-    #     # more fields for the doc_data, which are doc_type's JSON Schema
+    #     path: Optional[str] = ML classified path
+    #     docType: Optional[str] = ML identified docType
+    #     # more fields according to the doc_type's JSON Schema
     # }
-
-class CreateDocReq(UpdateDocReq):
-    file: UploadFile = File(...)
-
-class DocReq(BaseModel):
-    id: str
-
-class SemanticSearchReq(BaseModel):
-    question: str
-    searchDepth: int = 10
 
 
 # -----------------------------
@@ -128,7 +135,7 @@ async def create_doc(req: CreateDocReq):
 
     # Add and process doc
     rag_service = get_company_rag_service(req.state.company_id)
-    res = await rag_service.create_doc(source_path, req.docData, req.allowOverride, req.mergeExisting, req.state.user_role)
+    res = await rag_service.create_doc(source_path, req.docData, req.allowOverride, req.state.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
@@ -139,7 +146,7 @@ async def create_doc(req: CreateDocReq):
 @app.post("/updateDocument")
 async def update_doc(req: UpdateDocReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.update_doc_data(req.docData, req.allowOverride, req.mergeExisting, req.state.user_role)
+    return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user_role)
 
 
 @app.post("/getDocument")
