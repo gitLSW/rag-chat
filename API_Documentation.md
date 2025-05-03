@@ -10,9 +10,8 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
   "user_role": USER_ACCSESS_GROUP
 }
 ```
-- **API Key**: `x-api-key API_KEY`
-\
-\
+- **API Key**: `x-api-key API_KEY`\
+
 ## Body
 #### 1. `POST /createAccessGroup`
 - **Purpose**: Creates a new access group for document permissions.
