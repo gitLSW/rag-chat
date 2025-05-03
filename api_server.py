@@ -31,7 +31,7 @@ class SemanticSearchReq(BaseModel):
     searchDepth: int = 10
 
 class CreateAccessGroupReq(BaseModel):
-    access_group: str
+    accessGroup: str
 
 class AddDocSchemaReq(BaseModel):
     docType: str
@@ -95,7 +95,7 @@ app.add_middleware(
 @app.post("/createAccessGroup")
 async def create_access_group(req: CreateAccessGroupReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.access_manager.create_access_group(req.access_group, req.state.user_access_role)
+    return rag_service.access_manager.create_access_group(req.accessGroup, req.state.user_access_role)
 
 
 @app.post("/addDocumentSchema")
