@@ -248,16 +248,19 @@ class RAGService:
         return OKResponse(detail=f'Successfully deleted Document {doc_id}', data=doc_data)
     
 
-    def get_doc_text(self, doc_id, user_access_role):
+    def get_doc(self, doc_id, user_access_role):
         self.access_manager.has_doc_access(doc_id, user_access_role)
 
         txt_path = f'./{self.company_id}/docs/{doc_id}.txt'
         with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
             doc_text = f.read()
             
+        doc_data = self.json_db.find_one({ '_id': doc_id })
+        
         return OKResponse(detail=f'Successfully read Document {doc_id}', data={
             'doc_id': doc_id,
-            'text': doc_text
+            'text': doc_text,
+            'data': doc_data
         })
 
 
