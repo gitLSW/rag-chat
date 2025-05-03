@@ -1,12 +1,26 @@
-Here's the complete documentation with added response schemas for each endpoint:
-
-### Endpoint Schema Documentation
+### API Documentation
 
 All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
 
+#### 1. `POST /createAccessGroup`
+- **Purpose**: Creates a new access group for document permissions.
+- **Request Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "access_group": {
+      "type": "string",
+      "description": "The name/identifier of the access group to create"
+    }
+  },
+  "required": ["access_group"]
+}
+```
+- **Response Schema**: Success/Failure Response
 
-#### 1. `POST /addDocumentSchema`
-- **Purpose**: Defines a new JSON schema for a specific document type.
+#### 2. `POST /addDocumentSchema`
+- **Purpose**: Defines a new JSON schema for a specific document type. Cannot override existing Schemata.
 - **Request Schema**:
 ```json
 {
@@ -54,9 +68,25 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 
+#### 3. `POST /deleteDocumentSchema`
+- **Purpose**: Deletes an existing document schema, if it is unused by all documents.
+- **Request Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc_type": {
+      "type": "string",
+      "description": "The type identifier for documents using this schema"
+    }
+  },
+  "required": ["doc_type"]
+}
+```
+- **Response Schema**: Success/Failure Response
 
-#### 2. `POST /addDocument`
-- **Purpose**: Create or replace a document file along with its metadata that must conform to a predefined schema.
+#### 4. `POST /createDocument`
+- **Purpose**: Create or replace a document file along with its metadata that must conform to a predefined schema. Can override an existing document.
 - **Request Schema**:
 ```json
 {
@@ -129,10 +159,9 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 
-
-#### 3. `POST /updateDocument`
-- **Purpose**: Updates an existing document's metadata.
-- **Request Schema**: Same as `/addDocument`'s `doc_data` property.
+#### 5. `POST /updateDocument`
+- **Purpose**: Override an existing document's metadata.
+- **Request Schema**: Same as `/createDocument`'s `doc_data` property.
 ```json
 {
   "type": "object",
@@ -193,7 +222,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 
-#### 4. `POST /deleteDocument`
+#### 6. `POST /deleteDocument`
 - **Purpose**: Deletes a document by its ID.
 - **Request Schema**:
 ```json
@@ -237,7 +266,40 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 
-#### 5. `POST /search`
+#### 7. `POST /getDocumentText`
+- **Purpose**: Retrieves the raw text content of a document.
+- **Request Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The ID of the document to read"
+    }
+  },
+  "required": ["id"]
+}
+```
+- **Response Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc_id": {
+      "type": "string",
+      "description": "The ID of the document to read"
+    },
+    "text": {
+      "type": "string",
+      "description": "The extracted text content of the document"
+    }
+  },
+  "required": ["doc_id", "text"]
+}
+```
+
+#### 8. `POST /search`
 - **Purpose**: Performs semantic search across documents.
 - **Request Schema**:
 ```json
@@ -288,7 +350,7 @@ All endpoints require a Bearer Token authentication and most require an addition
 }
 ```
 
-#### 6. `WebSocket /chat`
+#### 9. `WebSocket /chat`
 - **Purpose**: Opens a web socket connection, which streams the LLM response as chunks in real-time.
 - **Request Schema**:
 ```json
