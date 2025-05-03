@@ -2,7 +2,7 @@
 
 ## Header
 All endpoints require a Bearer Token authentication and most require an additional API key (except `/chat`). The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
-- **Bearer Token**: `Bearer BEARER_TOKEN`
+- **Bearer Token**: `Bearer BEARER_TOKEN`\
 The Bearer Token must be generated with `jsonwebtoken` and its payload must encode:
 ```json
 {
@@ -11,8 +11,8 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
 }
 ```
 - **API Key**: `x-api-key API_KEY`
-
-
+\
+\
 ## Body
 #### 1. `POST /createAccessGroup`
 - **Purpose**: Creates a new access group for document permissions.
