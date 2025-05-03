@@ -50,10 +50,10 @@ class OKResponse(JSONResponse):
     def __init__(self, detail='Success', data=None):
         self.data = data
         self.detail = detail
-        super().__init__(status_code=200, content=json.dumps({
+        super().__init__(status_code=200, content={
             "detail": detail,
-            "data": json.dumps(data)
-        }))
+            "data": data
+        })
 
 
 class RAGService:
@@ -75,7 +75,7 @@ class RAGService:
         - Connects to a local LLM API (e.g., via Ollama).
         - Loads a sentence transformer for generating vector embeddings of text.
         """
-        self.company = company_id
+        self.company_id = company_id
         self.access_manager = AccessManager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         self.doc_path_classifier = DocPathClassifier(company_id)
@@ -141,7 +141,7 @@ class RAGService:
             raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
         
         # Validate user access and create if necessary
-        doc_data['access_groups'] = self.access_manager.create_doc_access(doc_id, doc_data.get('accessGroups'), user_access_role)
+        doc_data['accessGroups'] = self.access_manager.create_doc_access(doc_id, doc_data.get('accessGroups'), user_access_role)
 
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
@@ -264,7 +264,7 @@ class RAGService:
 
         # Delete from json DB
         doc_data = self.json_db.delete_one({ '_id': doc_id })
-        if not old_doc:
+        if not doc_data:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist and thus couldn't be removed.")
         
         return OKResponse(f'Successfully deleted Document {doc_id}', doc_data)
@@ -289,7 +289,7 @@ class RAGService:
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         
-        valid_docs_data = {}
+        valid_docs_data = set()
         for doc_data in nearest_neighbors:
             try:
                 self.access_manager.has_doc_access(doc_data['id'], user_access_role)
@@ -320,7 +320,7 @@ class RAGService:
         if doc_type:
             json_schema = self.doc_schemata.get(doc_type)
         else:
-            json_schema, doc_type = self._identify_doc_json(text)
+            json_schema, doc_type = self._identify_doc_type(text)
 
         if not json_schema:
             return None, doc_type, json_schema, False
@@ -359,7 +359,8 @@ class RAGService:
             Write your reasoning below here inside think tags and once you are done thinking, provide your answer in the described format !"""
 
         res = await RAGService.llm_service.query(prompt, sampling_params)
-
+        
+        parsed_json = None # prevents UnboundLocalError !
         try:
             answer_json = re.search(r"```json\s*(.*?)\s*```", res, re.DOTALL).group(1)
             parsed_json = json.loads(answer_json)
@@ -476,7 +477,7 @@ class RAGService:
                 # Stream the second LLM response
                 async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
                     yield chunk
-            except json.JSONDecodeError e:
+            except json.JSONDecodeError as e:
                 # The LLM provided a invalid database query
                 async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=False):
                     yield chunk
@@ -491,16 +492,6 @@ class RAGService:
         doc_sources_map = defaultdict(set)
         summarize_tasks = []
         
-        # Loads and summarizes a single document.
-        async def _load_and_summarize_doc(self, doc_id, question):
-            txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
-            async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-                doc_text = await f.read()
-        
-            summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
-            summary = await RAGService.llm_service.query(summarize_prompt)
-            return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
-        
         for doc_data in docs_data:
             doc_id = doc_data['docId']
             page_num = doc_data['pageNum']
@@ -511,14 +502,25 @@ class RAGService:
             else:
                 doc_sources_map[doc_id].add(page_num)
             
-            summarize_tasks.append(_load_and_summarize_doc(doc_id, question))
+            summarize_tasks.append(self._load_and_summarize_doc(doc_id, question))
     
         # Run all LLM summaries concurrently
         doc_summaries = await asyncio.gather(*summarize_tasks)
         return doc_summaries, doc_types, doc_sources_map
     
     
-    def _build_prompt(self, question, doc_summaries, doc_types, thinking_model=True, allow_mongo_db_query=True)
+    async def _load_and_summarize_doc(self, doc_id, question):
+        # Loads and summarizes a single document.
+        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+            doc_text = await f.read()
+        
+        summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
+        summary = await RAGService.llm_service.query(summarize_prompt)
+        return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
+    
+    
+    def _build_prompt(self, question, doc_summaries, doc_types, thinking_model=True, allow_mongo_db_query=True):
         """Construct the final prompt for the LLM."""
         prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n"
         for doc_summary in doc_summaries:
