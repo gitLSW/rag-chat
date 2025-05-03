@@ -155,7 +155,8 @@ All endpoints require a Bearer Token authentication and most require an addition
       "description": "The processed document data including extracted metadata",
       "additionalProperties": true
     }
-  }
+  },
+  "required": ["details", "data"]
 }
 ```
 
@@ -218,7 +219,8 @@ All endpoints require a Bearer Token authentication and most require an addition
       "description": "The updated document data",
       "additionalProperties": true
     }
-  }
+  },
+  "required": ["details", "data"]
 }
 ```
 
@@ -262,7 +264,8 @@ All endpoints require a Bearer Token authentication and most require an addition
       "description": "The deleted document data",
       "additionalProperties": true
     }
-  }
+  },
+  "required": ["details", "data"]
 }
 ```
 
@@ -286,32 +289,37 @@ All endpoints require a Bearer Token authentication and most require an addition
 {
   "type": "object",
   "properties": {
-    "doc_id": {
+    "detail": {
       "type": "string",
-      "description": "The ID of the document to read"
-    },
-    "text": {
-      "type": "string",
-      "description": "The extracted text content of the document"
+      "description": "Success message"
     },
     "data": {
       "type": "object",
       "properties": {
-          "id": {"type": "string"},
-          "path": {"type": "string"},
-          "docType": {"type": "string"},
-          "accessGroups": {
-              "type": "array",
-              "items": {"type": "string"},
-              "minItems": 1
-          }
+        "text": {
+          "type": "string",
+          "description": "The extracted text content of the document"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+              "id": {"type": "string"},
+              "path": {"type": "string"},
+              "docType": {"type": "string"},
+              "accessGroups": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "minItems": 1
+              }
+          },
+          "required": ["id", "path", "docType", "accessGroups"],
+          "description": "The processed document data including extracted metadata",
+          "additionalProperties": true
+        }
       },
-      "required": ["id", "path", "docType", "accessGroups"],
-      "description": "The processed document data including extracted metadata",
-      "additionalProperties": true
-    }
-  },
-  "required": ["doc_id", "text", "data"]
+      "required": ["doc_id", "text", "data"]
+    },
+  "required": ["details", "data"]
 }
 ```
 
