@@ -10,8 +10,7 @@ from pydantic import BaseModel
 
 from services.rag_service import RAGService
 from services.doc_extractor import DocExtractor
-from auth.auth_middleware import AuthMiddleware
-from auth.verify_source_middlware import VerifySourceMiddleware
+from auth_middleware import AuthMiddleware
 
 # Load environment variables
 load_dotenv()
@@ -40,7 +39,7 @@ class AddDocReq(BaseModel):
     #     # more fields for the doc_data, which are doc_type's JSON Schema
     # }
 
-class DeleteDocReq(BaseModel):
+class DocReq(BaseModel):
     id: str
 
 class SemanticSearchReq(BaseModel):
@@ -69,23 +68,35 @@ def get_company_rag_service(company_id):
 # -----------------------------
 
 app = FastAPI()
-app.add_middleware(AuthMiddleware, public_key_url=PUBLIC_KEY_URL)
 app.add_middleware(
-    VerifySourceMiddleware,
+    AuthMiddleware,
+    public_key_url=PUBLIC_KEY_URL,
     api_key=API_KEY,
     allowed_ips=API_ALLOWED_IPs,
     exempt_paths={'/chat'}
 )
 
 
-@app.post("/addDocumentSchema")
-async def add_doc_schema(req: Request):
+@app.post("/createAccessGroup")
+async def create_access_group(req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
 
-@app.post("/addDocument")
-async def add_doc(req: AddDocReq):
+@app.post("/createDocumentSchema")
+async def create_doc_schema(req: Request):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
+
+
+@app.post("/deleteDocumentSchema")
+async def delete_doc_schema(req: Request):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.delete_json_schema_type(req.docType, req.state.user_access_role)
+
+
+@app.post("/createDocument")
+async def create_doc(req: AddDocReq):
     mime_type, _ = guess_type(req.file.filename)
 
     # Check if MIME type is supported by DocExtractor
@@ -109,7 +120,7 @@ async def add_doc(req: AddDocReq):
 
     # Add and process doc
     rag_service = get_company_rag_service(req.state.company_id)
-    res = await rag_service.add_doc(source_path, req.docData, req.state.user_role)
+    res = await rag_service.create_doc(source_path, req.docData, req.state.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
@@ -125,9 +136,15 @@ async def update_doc(req: Request):
 
 
 @app.post("/deleteDocument")
-async def delete_doc(req: DeleteDocReq):
+async def delete_doc(req: DocReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.delete_doc(req.id, req.state.user_role)
+
+
+@app.post("/getDocumentText")
+async def add_doc_schema(req: DocReq):
+    rag_service = get_company_rag_service(req.state.company_id)
+    return rag_service.get_doc_text(req.id, req.state.user_access_role)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
