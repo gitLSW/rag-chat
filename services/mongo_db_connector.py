@@ -1,7 +1,7 @@
 import os
 import json
 from pymongo import MongoClient
-from ..get_env_var import get_env_var
+from ..get_env_var import get_env_var, MissingEnvVarError
 
 
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
