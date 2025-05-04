@@ -41,12 +41,16 @@ class MongoDBConnector:
             return None
         
         # Connect to MongoDB
-        client = MongoClient(
-            MONGO_DB_URL,
-            username=username,
-            password=password,
-            authSource='admin'  # Assuming admin is the auth database
-        )
+        try:
+            client = MongoClient(
+                MONGO_DB_URL,
+                username=username,
+                password=password,
+                authSource='admin'  # Assuming admin is the auth database
+            )
+        except Exception as e:
+            # f"Error logging LLM into mongo_db for company {self.company_id} with user {username}" 
+            return None 
         
         company_db = client[company_id]
         
@@ -64,7 +68,7 @@ class MongoDBConnector:
             result = company_db.command(modified_cmd)
             return result
         except Exception as e:
-            # f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}")
+            # f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}"
             return None
 
 
