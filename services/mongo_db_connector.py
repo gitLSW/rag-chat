@@ -26,14 +26,19 @@ class MongoDBConnector:
             The result of the MongoDB command execution
         """
         if isinstance(json_cmd, str):
-            json_cmd = json.loads(json_cmd)
+            try:
+                json_cmd = json.loads(json_cmd)
+            except json.JSONDecodeError as e:
+                # Invalid json_cmd
+                return None
         
         # Construct credentials
         username = f'llm_user_{self.company_id}_{user_access_role}'
         password = os.getenv(f'LLM_USER_{self.company_id}_PW')
         
         if not password:
-            raise ValueError(f"Password not found for company {company_id}")
+            # f"Password not found for company {company_id}"
+            return None
         
         # Connect to MongoDB
         client = MongoClient(
@@ -48,8 +53,9 @@ class MongoDBConnector:
         # Determine the appropriate view to query
         view_name = f'access_view_{user_access_role}'
         if view_name not in company_db.list_collection_names():
-            raise ValueError(f'The no mongoDB view found for user_role "{user_ccess_role}". Add it first at /addAccessGroup')
-        
+            # f'The no mongoDB view found for user_role "{user_ccess_role}". Add it first at /addAccessGroup'
+            return None
+            
         try:
             # Modify the command to use the view instead of base collection
             modified_cmd = self._rewrite_command(json_cmd, view_name)
@@ -57,9 +63,9 @@ class MongoDBConnector:
             # Execute the command
             result = company_db.command(modified_cmd)
             return result
-            
         except Exception as e:
-            raise RuntimeError(f"Error executing MongoDB command: {str(e)}")
+            # f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}")
+            return None
 
 
     def _rewrite_command(self, original_cmd, view_name):
