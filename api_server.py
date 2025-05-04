@@ -1,6 +1,6 @@
 import os
 import uuid
-from dotenv import load_dotenv
+from get_env_var import get_env_var
 # from typing import List, Optional
 
 from mimetypes import guess_type
@@ -14,10 +14,9 @@ from auth.token_middleware import TokenMiddleware
 from auth.api_access_middlware import APIAccessMiddleware
 
 # Load environment variables
-load_dotenv()
-API_KEY = os.getenv('API_KEY')
-API_ALLOWED_IPs = os.getenv('API_ALLOWED_IPs')
-PUBLIC_KEY_URL = os.getenv('PUBLIC_KEY_SOURCE_URL')
+API_KEY = get_env_var('API_KEY')
+API_ALLOWED_IPs = get_env_var('API_ALLOWED_IPs')
+PUBLIC_KEY_URL = get_env_var('PUBLIC_KEY_SOURCE_URL')
 
 # -----------------------------
 # Request Models
