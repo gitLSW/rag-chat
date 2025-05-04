@@ -1,4 +1,3 @@
-import os
 import json
 from pymongo import MongoClient
 from ..get_env_var import get_env_var, MissingEnvVarError
@@ -35,7 +34,7 @@ class MongoDBConnector:
         try:
             # Construct credentials
             username = f'llm_user_{self.company_id}_{user_access_role}'
-            password = os.getenv(f'LLM_USER_{self.company_id}_PW')
+            password = get_env_var(f'LLM_USER_{self.company_id}_PW')
             
             if not password:
                 # f"Password not found for company {company_id}"
