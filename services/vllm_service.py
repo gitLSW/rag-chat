@@ -1,14 +1,13 @@
 import os
-from dotenv import load_dotenv
+from ..get_env_var import get_env_var
 from openai import AsyncOpenAI as AsyncClient
 from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer
 
 # Load environment variables
-load_dotenv()
-LLM_URL = os.getenv('LLM_URL')
-LLM_MODEL = os.getenv('LLM_MODEL')
-vLLM_API_KEY = os.getenv('vLLM_API_KEY')
+LLM_URL = get_env_var('LLM_URL')
+LLM_MODEL = get_env_var('LLM_MODEL')
+vLLM_API_KEY = get_env_var('vLLM_API_KEY')
 
 class LLMService:
     """
