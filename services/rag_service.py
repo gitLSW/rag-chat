@@ -24,7 +24,6 @@ from doc_path_classifier import DocPathClassifier
 from mongo_db_connector import MongoDBConnector
 
 
-load_dotenv()
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 # Configuration
