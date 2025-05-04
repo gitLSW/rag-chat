@@ -1,14 +1,13 @@
 import os
 import json
-from dotenv import load_dotenv
+from ..get_env_var import get_env_var
 from fastapi import HTTPException
 from filelock import FileLock
 from pymongo import MongoClient
 from rag_service import OKResponse
 
 
-load_dotenv()
-MONGO_DB_URL = os.getenv('MONGO_DB_URL')
+MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 
 class AccessNotFoundError(HTTPException):
