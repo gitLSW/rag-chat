@@ -545,7 +545,7 @@ class RAGService:
         for doc_id, pages in doc_sources_map.items():
             try:
                 doc_pseudo_path = self.json_db.find_one({ '_id': doc_id }).get('path')
-            except:
+            finally:
                 doc_pseudo_path = f"Unknown path for document with ID {doc_id}"
                 
             sources_info += doc_pseudo_path
