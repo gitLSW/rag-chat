@@ -69,9 +69,6 @@ class MongoDBConnector:
         - Injects view name into collection references
         - Rejects all other operations
         """
-        if not isinstance(original_cmd, dict):
-            raise ValueError("Command must be a dictionary")
-    
         cmd = original_cmd.copy()
         
         # Supported operations where operation_name == collection_field
