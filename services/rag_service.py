@@ -453,7 +453,7 @@ class RAGService:
             answer_buffer += chunk
             yield chunk
             
-            if allow_mongo_db_query:
+            if allow_mongo_db_query and chunk.contains('`'):
                 # Check for complete mongo_json block
                 mongo_match = re.search(r"```mongo_json\s*(.*?)\s*```", answer_buffer, re.DOTALL)
                 if mongo_match:
@@ -462,10 +462,9 @@ class RAGService:
         
         # If we found a mongo query, execute it and do second LLM call
         if mongo_query and allow_mongo_db_query:
-            try:
-                # Execute MongoDB query
-                mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
-                
+            # Execute MongoDB query
+            mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
+            if mongo_result:
                 # Build follow-up prompt with MongoDB results
                 follow_up_prompt = (
                     f'{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n\n'
@@ -477,7 +476,7 @@ class RAGService:
                 # Stream the second LLM response
                 async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
                     yield chunk
-            except json.JSONDecodeError as e:
+            else:
                 # The LLM provided a invalid database query
                 async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=False):
                     yield chunk
