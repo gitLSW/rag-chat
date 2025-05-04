@@ -2,7 +2,7 @@ import re
 import os
 import json
 from collections import defaultdict
-from dotenv import load_dotenv
+from ..get_env_var import get_env_var
 
 from filelock import FileLock
 import asyncio
@@ -25,7 +25,7 @@ from mongo_db_connector import MongoDBConnector
 
 
 load_dotenv()
-MONGO_DB_URL = os.getenv('MONGO_DB_URL')
+MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 # Configuration
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
