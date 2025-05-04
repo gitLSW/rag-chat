@@ -1,10 +1,10 @@
 import os
 import json
 from pymongo import MongoClient
-from dotenv import load_dotenv
+from ..get_env_var import get_env_var
 
-load_dotenv()
-MONGO_DB_URL = os.getenv('MONGO_DB_URL')
+
+MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 
 class MongoDBConnector:
@@ -32,24 +32,29 @@ class MongoDBConnector:
                 # Invalid json_cmd
                 return None
         
-        # Construct credentials
-        username = f'llm_user_{self.company_id}_{user_access_role}'
-        password = os.getenv(f'LLM_USER_{self.company_id}_PW')
-        
-        if not password:
-            # f"Password not found for company {company_id}"
-            return None
-        
-        # Connect to MongoDB
         try:
+            # Construct credentials
+            username = f'llm_user_{self.company_id}_{user_access_role}'
+            password = os.getenv(f'LLM_USER_{self.company_id}_PW')
+            
+            if not password:
+                # f"Password not found for company {company_id}"
+                return None
+            
+            # Connect to MongoDB
             client = MongoClient(
                 MONGO_DB_URL,
                 username=username,
                 password=password,
                 authSource='admin'  # Assuming admin is the auth database
             )
+        except MissingEnvVarRError as e:
+            # TODO: log error
+            pass
         except Exception as e:
-            # f"Error logging LLM into mongo_db for company {self.company_id} with user {username}" 
+            # TODO: log error: f"Error logging LLM into mongo_db for company {self.company_id} with user {username}"
+            pass
+        finally:
             return None 
         
         company_db = client[company_id]
@@ -57,7 +62,7 @@ class MongoDBConnector:
         # Determine the appropriate view to query
         view_name = f'access_view_{user_access_role}'
         if view_name not in company_db.list_collection_names():
-            # f'The no mongoDB view found for user_role "{user_ccess_role}". Add it first at /addAccessGroup'
+            # TODO: log error: f'The no mongoDB view found for user_role "{user_ccess_role}". Add it first at /addAccessGroup'
             return None
             
         try:
@@ -68,7 +73,7 @@ class MongoDBConnector:
             result = company_db.command(modified_cmd)
             return result
         except Exception as e:
-            # f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}"
+            # # TODO: log error: f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}"
             return None
 
 
