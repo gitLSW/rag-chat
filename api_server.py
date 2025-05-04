@@ -40,16 +40,6 @@ class AddDocSchemaReq(BaseModel):
 class DocReq(BaseModel):
     id: str
 
-class UpdateDocReq(BaseModel):
-    mergeExisting: bool = False
-    docData: dict # = {
-    #     id: str
-    #     accessGroups: Optional[List[str]] = oldDocData.accessGroups
-    #     path: Optional[str] = oldDocData.path
-    #     docType: Optional[str] = oldDocData.docType
-    #     # more fields according to the doc_type's JSON Schema
-    # }
-
 class CreateDocReq(BaseModel):
     file: UploadFile = File(...)
     allowOverride: bool = True
@@ -58,6 +48,16 @@ class CreateDocReq(BaseModel):
     #     accessGroups: List[str]
     #     path: Optional[str] = ML classified path
     #     docType: Optional[str] = ML identified docType
+    #     # more fields according to the doc_type's JSON Schema
+    # }
+    
+class UpdateDocReq(BaseModel):
+    mergeExisting: bool = False
+    docData: dict # = {
+    #     id: str
+    #     accessGroups: Optional[List[str]] = oldDocData.accessGroups
+    #     path: Optional[str] = oldDocData.path
+    #     docType: Optional[str] = oldDocData.docType
     #     # more fields according to the doc_type's JSON Schema
     # }
 
