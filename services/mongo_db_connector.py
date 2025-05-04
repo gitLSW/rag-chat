@@ -23,7 +23,7 @@ class MongoDBConnector:
             user_access_role (str): The access role of the current user
             
         Returns:
-            The result of the MongoDB command execution
+            The result of the MongoDB command if the execution was successful else None.
         """
         if isinstance(json_cmd, str):
             try:
