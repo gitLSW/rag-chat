@@ -1,9 +1,9 @@
 # API Documentation
 
 ## Header
-All endpoints require a Bearer Token authentication and most require to be whitelisted and send an additional API key (except `/chat`).
-- **API Key**: `x-api-key API_KEY`
+- **API Key**: `x-api-key API_KEY` Every endpoint (except `/chat`) require an API key and the request source must prevously be whitelisted.
 - **Bearer Token**: `Bearer BEARER_TOKEN`\
+All endpoints require a Bearer Token authentication.
 The Bearer Token must be generated with `jsonwebtoken` and its payload must encode:
 ```json
 {
