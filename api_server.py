@@ -159,7 +159,7 @@ async def update_doc(doc_id, req: UpdateDocReq):
     if not body_doc_id:
         req.docData['id'] = doc_id
     else body_doc_id != doc_id:
-        raise HTTPException(400, "URL ducument id doesn't match request body's document id!")
+        raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user_role)
