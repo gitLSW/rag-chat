@@ -153,7 +153,6 @@ The system automatically validates document metadata against the defined schemas
     "docData": {
       "type": "object",
       "properties": {
-        "id": {"type": "string"},
         "path": {"type": "string"},
         "docType": {"type": "string"},
         "accessGroups": {
@@ -162,7 +161,6 @@ The system automatically validates document metadata against the defined schemas
           "minItems": 1
         }
       },
-      "required": ["id"],
       "additionalProperties": true
     }
   },
