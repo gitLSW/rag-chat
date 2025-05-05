@@ -19,7 +19,7 @@ The public key will automatically retreived from the Auth server's url, which ne
 ## Body
 The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
 
-#### 1. `POST /createAccessGroup`
+#### 1. `POST /accessGroups`
 - **Purpose**: Creates a new access group for document permissions.
 - **Access Control**: Requires admin role
 - **Request Schema**:
@@ -37,7 +37,7 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Success/Failure Response
 
-#### 2. `POST /addDocumentSchema`
+#### 2. `POST /documentSchemata`
 - **Purpose**: Defines a new JSON schema for a specific document type. Cannot override existing Schemata.
 - **Access Control**: Requires admin role
 - **Request Schema**:
@@ -60,25 +60,13 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Success/Failure Response with the added schema
 
-#### 3. `POST /deleteDocumentSchema`
+#### 3. `DELETE /documentSchemata/{doc_type_schema_name}`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
 - **Access Control**: Requires admin role
-- **Request Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "docType": {
-      "type": "string",
-      "description": "The type identifier of the schema to delete"
-    }
-  },
-  "required": ["docType"]
-}
-```
+- **Request Schema**: `None`
 - **Response Schema**: Success/Failure Response
 
-#### 4. `POST /createDocument`
+#### 4. `POST /documents`
 - **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema.
 - **Request Schema**:
 ```json
@@ -150,7 +138,7 @@ The system automatically validates document metadata against the defined schemas
 }
 ```
 
-#### 5. `POST /updateDocument`
+#### 5. `PUT /documents/{doc_id}`
 - **Purpose**: Updates an existing document's metadata.
 - **Request Schema**:
 ```json
@@ -183,21 +171,9 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Same as createDocument response
 
-#### 6. `POST /getDocument`
+#### 6. `GET /documents/{doc_id}`
 - **Purpose**: Retrieves a document's metadata and text content.
-- **Request Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "The ID of the document to retrieve"
-    }
-  },
-  "required": ["id"]
-}
-```
+- **Request Schema**: `None`
 - **Response Schema**:
 ```json
 {
@@ -223,21 +199,9 @@ The system automatically validates document metadata against the defined schemas
 }
 ```
 
-#### 7. `POST /deleteDocument`
+#### 7. `DELETE /documents/{doc_id}`
 - **Purpose**: Deletes a document by its ID.
-- **Request Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "The ID of the document to delete"
-    }
-  },
-  "required": ["id"]
-}
-```
+- **Request Schema**: `None`
 - **Response Schema**: Success/Failure Response with deleted document data
 
 #### 8. `POST /search`
