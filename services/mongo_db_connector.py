@@ -58,7 +58,7 @@ class MongoDBConnector:
         view_name = f'access_view_{user_access_role}'
         if view_name not in company_db.list_collection_names():
             # TODO: log error: 
-            logger.critical(f'The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role at /createAccessGroup !')
+            logger.critical(f'The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role with POST /accessGroups !')
             return None
             
         try:
