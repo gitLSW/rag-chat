@@ -166,7 +166,7 @@ class RAGService:
             raise HTTPException(500, 'docType was not provided and could not automatically be identifed')
         
         if not doc_schema:
-            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema at /createDocSchema first')
+            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema with POST /documentSchemata first')
 
         # Build final schema
         doc_schema = self._merge_with_base_schema(doc_schema)
@@ -210,8 +210,6 @@ class RAGService:
             raise HTTPException(400, 'docData must contain an "id"')
         
         old_doc = self.access_manager.has_doc_access(doc_id, user_access_role)
-        if not old_doc:
-            raise HTTPException(404, f"Doc {doc_id} doesn't exist! Upload it to /createDocument first.")
         
         old_doc_type = old_doc['docType']
         merged_doc = { **old_doc, **doc_data }
@@ -222,7 +220,7 @@ class RAGService:
             
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
-            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema at /createDocSchema first')
+            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema with POST /documentSchemata first')
         doc_schema = self._merge_with_base_schema(doc_schema)
         
         updated_doc = merged_doc if merge_existing else doc_data
