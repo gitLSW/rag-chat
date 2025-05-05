@@ -105,16 +105,16 @@ app.add_middleware(
 )
 
 
-@app.post("/accessGroups/{access_group}")
-async def create_access_group(access_group, req: CreateAccessGroupReq):
+@app.post("/accessGroups")
+async def create_access_group(req: CreateAccessGroupReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.access_manager.create_access_group(access_group, req.state.user_access_role)
+    return rag_service.access_manager.create_access_group(req.accessGroup, req.state.user_access_role)
 
 
-@app.post("/documentSchemata/{doc_type}")
-async def add_doc_schema(doc_type, req: AddDocSchemaReq):
+@app.post("/documentSchemata")
+async def add_doc_schema(req: AddDocSchemaReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.add_json_schema_type(doc_type, req.docSchema, req.state.user_access_role)
+    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
 
 
 @app.delete("/documentSchemata/{doc_type}")
@@ -123,11 +123,8 @@ async def delete_doc_schema(doc_type, req: Request):
     return rag_service.delete_json_schema_type(doc_type, req.state.user_access_role)
 
 
-@app.post("/documents/{doc_id}")
-async def create_doc(docreq: CreateDocReq):
-    if req.docData.get('id') != doc_id:
-        raise HTTPException(400, "URL ducument id doesn't match request body's document id!")
-    
+@app.post("/documents")
+async def create_doc(req: CreateDocReq):
     mime_type, _ = guess_type(req.file.filename)
 
     # Check if MIME type is supported by DocExtractor
@@ -156,22 +153,28 @@ async def create_doc(docreq: CreateDocReq):
     return res
 
 
-@app.post("/updateDocument")
-async def update_doc(req: UpdateDocReq):
+@app.put("/documents/{doc_id}")
+async def update_doc(doc_id, req: UpdateDocReq):
+    body_doc_id = req.docData.get('id')
+    if not body_doc_id:
+        req.docData['id'] = doc_id
+    else body_doc_id != doc_id:
+        raise HTTPException(400, "URL ducument id doesn't match request body's document id!")
+    
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user_role)
 
 
-@app.post("/getDocument")
-async def get_doc(req: DocReq):
+@app.get("/documents/{doc_id}")
+async def get_doc(doc_id, req: DocReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.get_doc(req.id, req.state.user_access_role)
+    return rag_service.get_doc(doc_id, req.state.user_access_role)
 
 
-@app.post("/deleteDocument")
-async def delete_doc(req: DocReq):
+@app.delete("/documents/{doc_id}")
+async def delete_doc(doc_id, req: DocReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.delete_doc(req.id, req.state.user_role)
+    return rag_service.delete_doc(doc_id, req.state.user_role)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
