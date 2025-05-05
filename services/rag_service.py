@@ -298,10 +298,10 @@ class RAGService:
             try:
                 doc_id = doc_data['id']
                 self.access_manager.has_doc_access(doc_id, user_access_role)
-            except DocumentNotFoundError as e:
+            except DocumentNotFoundError:
                 logger.warning(f'Corrupt data. VectorDB is referencing a missing doc with id {doc_id} for company {self.company_id} !')
                 continue
-            except InsufficientAccessError as e:
+            except InsufficientAccessError:
                 continue
             
             if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
