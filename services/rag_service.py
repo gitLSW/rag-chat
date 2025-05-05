@@ -17,7 +17,7 @@ from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
 
-from access_manager import get_access_manager, InsufficientAccessError, AccessNotFoundError
+from access_manager import get_access_manager, InsufficientAccessError, DocumentNotFoundError
 from vllm import SamplingParams
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
@@ -141,8 +141,13 @@ class RAGService:
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
         
-        # Validate user access and create if necessary
-        doc_data['accessGroups'] = self.access_manager.create_doc_access(doc_id, doc_data.get('accessGroups'), user_access_role)
+        # Validate user access
+        try:
+            self.access_manager.has_doc_access(doc_id, user_access_role)
+        except DocumentNotFoundError as e:
+            pass # Expeceted behavior
+
+        doc_data['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
 
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
@@ -204,7 +209,7 @@ class RAGService:
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
         
-        old_doc = self.json_db.find_one({ '_id': doc_id })
+        old_doc = self.access_manager.has_doc_access(doc_id, user_access_role)
         if not old_doc:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist! Upload it to /createDocument first.")
         
@@ -222,11 +227,11 @@ class RAGService:
         
         updated_doc = merged_doc if merge_existing else doc_data
         
-        # Validate user access and update if necessary
+        # Validate user access
         access_groups = updated_doc.get('accessGroups')
         if not access_groups:
-            access_groups = old_doc['access_groups']
-        updated_doc['access_groups'] = self.access_manager.update_doc_access(doc_id, access_groups, user_access_role)
+            access_groups = old_doc['accessGroups']
+        updated_doc['accessGroups'] = self.access_manager.validate_new_access_groups(access_groups)
         
         # If merge wasn't allowed and doc_data is missing a path, take the old one
         if not updated_doc.get('path'):
@@ -239,35 +244,33 @@ class RAGService:
 
 
     def get_doc(self, doc_id, user_access_role):
-        self.access_manager.has_doc_access(doc_id, user_access_role)
+        doc = self.access_manager.has_doc_access(doc_id, user_access_role)
 
         txt_path = f'./companies/{self.company_id}/docs/{doc_id}.txt'
         with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
             doc_text = f.read()
-            
-        doc_data = self.json_db.find_one({ '_id': doc_id })
-        doc_data['text'] = doc_text
         
-        return OKResponse(f'Successfully retrieved Document {doc_id}', doc_data)
+        doc['text'] = doc_text
+        
+        return OKResponse(f'Successfully retrieved Document {doc_id}', doc)
         
     
     def delete_doc(self, doc_id, user_access_role):
-        # Validate user access and delete if necessary
-        self.access_manager.delete_doc_access(doc_id, user_access_role)
-
-        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
-
-        # Delete file
-        os.remove(txt_path) # TODO: Check if this raises an exception, it should
+        # Validate user access
+        self.access_manager.has_doc_access(doc_id, user_access_role)
 
         # Delete from vector DB
         self.vector_db.delete(where={ 'doc_id': doc_id })
+
+        # Delete file
+        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
+        os.remove(txt_path) # TODO: Check if this raises an exception, it should
 
         # Delete from json DB
         doc_data = self.json_db.delete_one({ '_id': doc_id })
         if not doc_data:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist and thus couldn't be removed.")
-        
+
         return OKResponse(f'Successfully deleted Document {doc_id}', doc_data)
     
 
@@ -295,8 +298,8 @@ class RAGService:
             try:
                 doc_id = doc_data['id']
                 self.access_manager.has_doc_access(doc_id, user_access_role)
-            except AccessNotFoundError as e:
-                logger.warning(f'Corrupt data. AccessManager entry of doc {doc_id} is missing !')
+            except DocumentNotFoundError as e:
+                logger.warning(f'Corrupt data. VectorDB is referencing a missing doc with id {doc_id} for company {self.company_id} !')
                 continue
             except InsufficientAccessError as e:
                 continue
@@ -442,11 +445,11 @@ class RAGService:
         # Process documents and prepare summaries
         doc_summaries, doc_types, doc_sources_map = await self._summarize_docs(docs_data, question)
         
-        async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role):
+        async for chunk in self._query_llm(question, doc_summaries, doc_types, doc_sources_map, user_access_role):
             yield chunk
         
     
-    async def _query_llm(self, question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=True):
+    async def _query_llm(self, question, doc_summaries, doc_types, doc_sources_map, user_access_role, allow_mongo_db_query=True):
         """ Generates the prompt and queries the LLM """
         # Build the initial prompt
         prompt = self._build_prompt(question, doc_summaries, doc_types, allow_mongo_db_query)
@@ -483,7 +486,7 @@ class RAGService:
                     yield chunk
             else:
                 # The LLM provided a invalid database query
-                async for chunk in self._query_llm(question, doc_summaries, doc_types, user_access_role, allow_mongo_db_query=False):
+                async for chunk in self._query_llm(question, doc_summaries, doc_types, doc_sources_map, user_access_role, allow_mongo_db_query=False):
                     yield chunk
         
         # Stream the document sources string at the very end
