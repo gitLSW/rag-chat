@@ -52,13 +52,13 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
-        company_id = payload.get("company_id")
+        company_id = payload.get("companyId")
         if not company_id:
-            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the company_id.")
+            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the companyId.")
         
-        user_role = payload.get("user_role")
+        user_role = payload.get("userRole")
         if not user_role:
-            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the user_role.")
+            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userRole.")
         
         access_manager = get_access_manager(company_id)
         if not user_role in access_manager.valid_access_groups:
