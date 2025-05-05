@@ -8,8 +8,8 @@ All endpoints require a Bearer Token authentication.
 The Bearer Token must be generated with `jsonwebtoken` and its payload must encode:
 ```json
 {
-  "company_id": USER_COMPANY_IDENTIFIER,
-  "user_role": USER_ACCSESS_GROUP
+  "companyId": USER_COMPANY_IDENTIFIER,
+  "userRole": USER_ACCSESS_GROUP
 }
 ```
 The public key will automatically retreived from the Auth server's url, which needs to be specified in the .env file.
