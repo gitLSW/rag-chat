@@ -62,7 +62,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         
         access_manager = get_access_manager(company_id)
         if not user_role in access_manager.valid_access_groups:
-            raise HTTPException(400, f"Unknown user_role {user_role}. Register it at /createAccessGroup first.")
+            raise HTTPException(400, f"Unknown user_role {user_role}. Register it with POST /accessGroups first.")
 
         req.state.company_id = company_id
         req.state.user_role = user_role
