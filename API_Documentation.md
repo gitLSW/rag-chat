@@ -60,7 +60,7 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Success/Failure Response with the added schema
 
-#### 3. `DELETE /documentSchemata/{doc_type_schema_name}`
+#### 3. `DELETE /documentSchemata/{doc_type}`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
 - **Access Control**: Requires admin role
 - **Request Schema**: `None`
