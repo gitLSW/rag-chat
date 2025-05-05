@@ -105,26 +105,29 @@ app.add_middleware(
 )
 
 
-@app.post("/createAccessGroup")
-async def create_access_group(req: CreateAccessGroupReq):
+@app.post("/accessGroups/{access_group}")
+async def create_access_group(access_group, req: CreateAccessGroupReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.access_manager.create_access_group(req.accessGroup, req.state.user_access_role)
+    return rag_service.access_manager.create_access_group(access_group, req.state.user_access_role)
 
 
-@app.post("/addDocumentSchema")
-async def add_doc_schema(req: AddDocSchemaReq):
+@app.post("/documentSchemata/{doc_type}")
+async def add_doc_schema(doc_type, req: AddDocSchemaReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
+    return rag_service.add_json_schema_type(doc_type, req.docSchema, req.state.user_access_role)
 
 
-@app.post("/deleteDocumentSchema")
-async def delete_doc_schema(req: Request):
+@app.delete("/documentSchemata/{doc_type}")
+async def delete_doc_schema(doc_type, req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.delete_json_schema_type(req.docType, req.state.user_access_role)
+    return rag_service.delete_json_schema_type(doc_type, req.state.user_access_role)
 
 
-@app.post("/createDocument")
-async def create_doc(req: CreateDocReq):
+@app.post("/documents/{doc_id}")
+async def create_doc(docreq: CreateDocReq):
+    if req.docData.get('id') != doc_id:
+        raise HTTPException(400, "URL ducument id doesn't match request body's document id!")
+    
     mime_type, _ = guess_type(req.file.filename)
 
     # Check if MIME type is supported by DocExtractor
