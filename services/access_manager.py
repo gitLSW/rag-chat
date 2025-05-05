@@ -10,8 +10,8 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 
 class DocumentNotFoundError(HTTPException):
-    def __init__(self, doc_id, detail='Document not found'):
-        super().__init__(status_code=404, detail=detail)
+    def __init__(self, doc_id, detail=None):
+        super().__init__(404, detail if detail else f"Doc {doc_id} doesn't exist! Create it with POST /documents first.")
         self.doc_id = doc_id
 
 
