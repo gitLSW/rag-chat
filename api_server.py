@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from get_env_var import get_env_var
 # from typing import List, Optional
 
@@ -10,13 +11,25 @@ from pydantic import BaseModel
 
 from services.rag_service import RAGService
 from services.doc_extractor import DocExtractor
-from auth.token_middleware import TokenMiddleware
-from auth.api_access_middlware import APIAccessMiddleware
+from middleware.auth.token_middleware import TokenMiddleware
+from middleware.auth.api_access_middlware import APIAccessMiddleware
+from middleware.error_handler_middleware import ErrorHandlerMiddleware
 
 # Load environment variables
 API_KEY = get_env_var('API_KEY')
 API_ALLOWED_IPs = get_env_var('API_ALLOWED_IPs')
 PUBLIC_KEY_URL = get_env_var('PUBLIC_KEY_SOURCE_URL')
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('error_handler.log'),
+        logging.StreamHandler()
+    ]
+)
+
 
 # -----------------------------
 # Request Models
@@ -82,6 +95,7 @@ def get_company_rag_service(company_id):
 # -----------------------------
 
 app = FastAPI()
+app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
 app.add_middleware(
     APIAccessMiddleware,
@@ -116,10 +130,7 @@ async def create_doc(req: CreateDocReq):
     # Check if MIME type is supported by DocExtractor
     supported_mime_types = DocExtractor._get_handlers().keys()
     if mime_type not in supported_mime_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}"
-        )
+        raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
     
     # Ensure the directory exists
     upload_dir = f'{req.state.company_id}/uploads/{uuid.uuid4()}'

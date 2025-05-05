@@ -1,6 +1,7 @@
 import re
 import os
 import json
+import logging
 from collections import defaultdict
 from ..get_env_var import get_env_var
 
@@ -16,13 +17,14 @@ from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
 
-from access_manager import AccessManager, InsufficientAccessError
+from access_manager import get_access_manager, InsufficientAccessError, AccessNotFoundError
 from vllm import SamplingParams
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
 from mongo_db_connector import MongoDBConnector
 
+logger = logging.getLogger(__name__)
 
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
@@ -75,12 +77,12 @@ class RAGService:
         - Loads a sentence transformer for generating vector embeddings of text.
         """
         self.company_id = company_id
-        self.access_manager = AccessManager(company_id)
+        self.access_manager = get_access_manager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         self.doc_path_classifier = DocPathClassifier(company_id)
         self.mongo_db_connector = MongoDBConnector(company_id)
 
-        self.schemata_path = f'./{company_id}/doc_schemata.json'
+        self.schemata_path = f'./companies/{company_id}/doc_schemata.json'
         with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
             self.doc_schemata = json.loads(f.read())
 
@@ -135,7 +137,7 @@ class RAGService:
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
         
-        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
         
@@ -239,7 +241,7 @@ class RAGService:
     def get_doc(self, doc_id, user_access_role):
         self.access_manager.has_doc_access(doc_id, user_access_role)
 
-        txt_path = f'./{self.company_id}/docs/{doc_id}.txt'
+        txt_path = f'./companies/{self.company_id}/docs/{doc_id}.txt'
         with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
             doc_text = f.read()
             
@@ -253,7 +255,7 @@ class RAGService:
         # Validate user access and delete if necessary
         self.access_manager.delete_doc_access(doc_id, user_access_role)
 
-        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
 
         # Delete file
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
@@ -291,14 +293,18 @@ class RAGService:
         valid_docs_data = set()
         for doc_data in nearest_neighbors:
             try:
-                self.access_manager.has_doc_access(doc_data['id'], user_access_role)
+                doc_id = doc_data['id']
+                self.access_manager.has_doc_access(doc_id, user_access_role)
+            except AccessNotFoundError as e:
+                logger.warning(f'Corrupt data. AccessManager entry of doc {doc_id} is missing !')
+                continue
             except InsufficientAccessError as e:
                 continue
             
             if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
                 valid_docs_data.append(doc_data)
 
-        return OKResponse(f'Found {len(valid_docs_data}', valid_docs_data)
+        return OKResponse(f'Found {len(valid_docs_data)}', valid_docs_data)
 
 
     async def extract_json(self, text, doc_type=None):
@@ -509,7 +515,7 @@ class RAGService:
     
     async def _load_and_summarize_doc(self, doc_id, question):
         # Loads and summarizes a single document.
-        txt_path = f"./{self.company_id}/docs/{doc_id}.txt"
+        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
         async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
             doc_text = await f.read()
         
@@ -545,7 +551,7 @@ class RAGService:
             try:
                 doc_pseudo_path = self.json_db.find_one({ '_id': doc_id }).get('path')
             finally:
-                doc_pseudo_path = f"Unknown path for document with ID {doc_id}"
+                doc_pseudo_path = f"Document with ID {doc_id}"
                 
             sources_info += doc_pseudo_path
             if pages is None:
@@ -565,8 +571,8 @@ class RAGService:
 
 # company = 'MyCompany'
 # rag = RAGService(company)
-# print(rag.add_doc(f'./{company}/uploads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf', 'CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
-# print(rag.add_doc(f'./{company}/uploads/AlexanderMeetingDiogines.pdf', 'AlexanderMeetingDiogines.pdf').detail)
+# print(rag.add_doc(f'./companies/{company}/uploads/CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf', 'CHARLEMAGNE_AND_HARUN_AL-RASHID.pdf').detail)
+# print(rag.add_doc(f'./companies/{company}/uploads/AlexanderMeetingDiogines.pdf', 'AlexanderMeetingDiogines.pdf').detail)
 # rag.add_doc('_On the usefulness of context data.pdf')
 
 # async def main1():

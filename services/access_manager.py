@@ -6,21 +6,18 @@ from filelock import FileLock
 from pymongo import MongoClient
 from rag_service import OKResponse
 
-
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 
 class AccessNotFoundError(HTTPException):
-    def __init__(self, doc_id, detail='File not found'):
+    def __init__(self, detail='File not found'):
         super().__init__(status_code=404, detail=detail)
-        self.doc_id = doc_id
-        
+
 
 class InsufficientAccessError(HTTPException):
-    def __init__(self, user_access_role, doc_id, detail='Insufficient access rights, permission denied'):
+    def __init__(self, user_access_role, detail='Insufficient access rights, permission denied'):
         super().__init__(status_code=403, detail=detail)
         self.user_access_role = user_access_role
-        self.doc_id = doc_id
 
 
 class AccessManager:
@@ -33,7 +30,7 @@ class AccessManager:
 
         if not os.path.exists(self.access_data_path):
             self.docs_access = {}
-            self.valid_access_groups = {}
+            self.valid_access_groups = {'admin'}
             return
 
         lock = FileLock(self.access_data_path)
@@ -70,7 +67,7 @@ class AccessManager:
         
         # Configuration
         username = f'llm_user_{self.company_id}_{access_group}'
-        password = os.getenv(f'LLM_USER_{self.company_id}_PW')
+        password = get_env_var(f'LLM_USER_{self.company_id}_PW')
         
         self.db_client['admin'].command({
             'createUser': username,
@@ -97,10 +94,10 @@ class AccessManager:
     def has_doc_access(self, doc_id, user_access_role):
         access_groups = self.docs_access.get(doc_id)
         if not access_groups:
-            raise AccessNotFoundError(doc_id)
+            raise AccessNotFoundError()
 
         if not user_access_role in access_groups:
-            raise InsufficientAccessError(user_access_role, doc_id)
+            raise InsufficientAccessError(user_access_role)
         return access_groups
     
 
@@ -158,3 +155,14 @@ class AccessManager:
                     'access_groups': self.valid_access_groups
                 }, f)
         return list(new_access_groups)
+    
+
+access_managers = {}
+def get_access_manager(company_id):
+    access_manager = access_managers.get(company_id)
+    if access_manager:
+        return access_manager
+    
+    access_manager = AccessManager(company_id)
+    access_managers[company_id] = access_manager
+    return access_manager

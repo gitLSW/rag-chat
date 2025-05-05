@@ -19,17 +19,11 @@ class APIAccessMiddleware(BaseHTTPMiddleware):
         # Verify IP address
         client_ip = request.client.host
         if client_ip not in self.allowed_ips:
-            raise HTTPException(
-                status_code=403,
-                detail="Forbidden - IP address not allowed"
-            )
+            raise HTTPException(403, "Forbidden - IP address not allowed")
 
         # Verify API key
         api_key = request.headers.get("x-api-key")
         if api_key != self.api_key:
-            raise HTTPException(
-                status_code=403,
-                detail="Forbidden - Invalid API key"
-            )
+            raise HTTPException(403, "Forbidden - Invalid API key")
 
         return await call_next(request)

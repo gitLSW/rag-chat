@@ -1,7 +1,6 @@
 import logging
-import os
 from functools import wraps
-from typing import Callable, Optional
+from typing import Callable
 
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.exceptions import RequestValidationError
@@ -12,16 +11,6 @@ import jsonschema
 import json
 import aiohttp
 
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('error_handler.log'),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger(__name__)
 
 
@@ -60,14 +49,14 @@ class ErrorHandlerMiddleware:
 
     def _register_middleware(self):
         @self.app.middleware("http")
-        async def middleware(request: Request, call_next: Callable) -> Response:
+        async def middleware(request: Request, call_next: Callable):
             try:
                 return await call_next(request)
             except Exception as exc:
                 return await self._handle_error(request, exc)
 
 
-    async def _handle_error(self, request: Request, exc: Exception) -> HTTPException:
+    async def _handle_error(self, request: Request, exc: Exception):
         # Environment variable errors - let these crash the system
         if isinstance(exc, (KeyError,)) and "env" in str(exc).lower():
             raise exc
@@ -241,19 +230,3 @@ class ErrorHandlerMiddleware:
                 return info
         
         return error_map[Exception]
-
-
-    @staticmethod
-    def critical_env_vars(*env_vars: str) -> None:
-        """Decorator to ensure critical environment variables are present"""
-        def decorator(func):
-            @wraps(func)
-            async def wrapper(*args, **kwargs):
-                missing = [var for var in env_vars if not os.getenv(var)]
-                if missing:
-                    raise EnvironmentError(
-                        f"Missing critical environment variables: {', '.join(missing)}"
-                    )
-                return await func(*args, **kwargs)
-            return wrapper
-        return decorator

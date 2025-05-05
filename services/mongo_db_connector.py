@@ -1,7 +1,9 @@
 import json
+import logging
 from pymongo import MongoClient
 from ..get_env_var import get_env_var, MissingEnvVarError
 
+logger = logging.getLogger(__name__)
 
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
@@ -36,10 +38,6 @@ class MongoDBConnector:
             username = f'llm_user_{self.company_id}_{user_access_role}'
             password = get_env_var(f'LLM_USER_{self.company_id}_PW')
             
-            if not password:
-                # f"Password not found for company {company_id}"
-                return None
-            
             # Connect to MongoDB
             client = MongoClient(
                 MONGO_DB_URL,
@@ -47,21 +45,20 @@ class MongoDBConnector:
                 password=password,
                 authSource='admin'  # Assuming admin is the auth database
             )
-        except MissingEnvVarRError as e:
-            # TODO: log error
-            pass
+        except MissingEnvVarError as e:
+            logger.critical(f"LLM User password not found for company {self.company_id}")
+            return None
         except Exception as e:
-            # TODO: log error: f"Error logging LLM into mongo_db for company {self.company_id} with user {username}"
-            pass
-        finally:
-            return None 
+            logger.error(f"Error connecting LLM User to mongo db for company {self.company_id} with user {username}")
+            return None
         
-        company_db = client[company_id]
+        company_db = client[self.company_id]
         
         # Determine the appropriate view to query
         view_name = f'access_view_{user_access_role}'
         if view_name not in company_db.list_collection_names():
-            # TODO: log error: f'The no mongoDB view found for user_role "{user_ccess_role}". Add it first at /addAccessGroup'
+            # TODO: log error: 
+            logger.critical(f'The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role at /createAccessGroup !')
             return None
             
         try:
@@ -72,7 +69,7 @@ class MongoDBConnector:
             result = company_db.command(modified_cmd)
             return result
         except Exception as e:
-            # # TODO: log error: f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}"
+            logger.warning(f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}")
             return None
 
 
