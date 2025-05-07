@@ -63,11 +63,11 @@ class AccessManager:
                         }
                     }]
                 })
-        
+
         # Configuration
         username = f'llm_user_{self.company_id}_{access_group}'
         password = get_env_var(f'LLM_USER_{self.company_id}_PW')
-        
+
         self.db_client['admin'].command({
             'createUser': username,
             'pwd': password,
@@ -77,7 +77,7 @@ class AccessManager:
                 'collection': view_name
             }]
         })
-        
+
         lock = FileLock(self.access_data_path)
         with lock:
             with open(self.access_data_path, 'w') as f:
@@ -108,7 +108,7 @@ class AccessManager:
         invalid_access_groups = [access_group for access_group in access_groups if access_group not in self.valid_access_groups]
         
         if len(invalid_access_groups) > 0:
-            raise HTTPException(409, f"Unregistered access_groups {invalid_access_groups}. Register them at '/createAccessGroup' first.")
+            raise HTTPException(409, f"Unregistered access_groups {invalid_access_groups}. Register them with POST '/accessGroups' first.")
         
         return list(access_groups)
     

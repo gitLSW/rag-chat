@@ -12,11 +12,11 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
   "userRole": USER_ACCSESS_GROUP
 }
 ```
-The public key will automatically retreived from the Auth server's url, which needs to be specified in the .env file.
+The public key will automatically retreived from the Auth server's URL, which needs to be specified in the .env file.
 
 
 
-## Body
+## Endpoints
 The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
 
 #### 1. `POST /accessGroups`
@@ -97,6 +97,10 @@ The system automatically validates document metadata against the defined schemas
         "docType": {
           "type": "string",
           "description": "Document type that matches a predefined schema"
+        },
+        "forceOCR": {
+          "type": "boolean",
+          "description": "Use the OCR only to extract text. The file must be a PDF for the OCR to work."
         },
         "accessGroups": {
           "type": "array",

@@ -49,11 +49,9 @@ class AddDocSchemaReq(BaseModel):
     docType: str
     docSchema: dict # JSON Schema
 
-class DocReq(BaseModel):
-    id: str
-
 class CreateDocReq(BaseModel):
     file: UploadFile = File(...)
+    forceOcr: bool = False
     allowOverride: bool = True
     docData: dict # = {
     #     id: str
@@ -131,7 +129,7 @@ async def create_doc(req: CreateDocReq):
     supported_mime_types = DocExtractor._get_handlers().keys()
     if mime_type not in supported_mime_types:
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
-    
+
     # Ensure the directory exists
     upload_dir = f'{req.state.company_id}/uploads/{uuid.uuid4()}'
     os.makedirs(upload_dir, exist_ok=True)
@@ -145,7 +143,7 @@ async def create_doc(req: CreateDocReq):
 
     # Add and process doc
     rag_service = get_company_rag_service(req.state.company_id)
-    res = await rag_service.create_doc(source_path, req.docData, req.allowOverride, req.state.user_role)
+    res = await rag_service.create_doc(source_path, req.docData, req.forceOcr, req.allowOverride, req.state.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
@@ -158,7 +156,7 @@ async def update_doc(doc_id, req: UpdateDocReq):
     body_doc_id = req.docData.get('id')
     if not body_doc_id:
         req.docData['id'] = doc_id
-    else body_doc_id != doc_id:
+    elif body_doc_id != doc_id:
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
     rag_service = get_company_rag_service(req.state.company_id)
@@ -166,13 +164,13 @@ async def update_doc(doc_id, req: UpdateDocReq):
 
 
 @app.get("/documents/{doc_id}")
-async def get_doc(doc_id, req: DocReq):
+async def get_doc(doc_id, req):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.get_doc(doc_id, req.state.user_access_role)
 
 
 @app.delete("/documents/{doc_id}")
-async def delete_doc(doc_id, req: DocReq):
+async def delete_doc(doc_id, req):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.delete_doc(doc_id, req.state.user_role)
 

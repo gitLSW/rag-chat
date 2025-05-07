@@ -16,7 +16,7 @@ class DocExtractor:
     ocr = OCR()
 
     @staticmethod
-    def extract_paragraphs(file_path):
+    def extract_paragraphs(file_path, force_ocr=False):
         file_path = Path(file_path)
 
         if not file_path.exists():
@@ -29,9 +29,15 @@ class DocExtractor:
         if not mime_type:
             raise ValueError(f"Cannot determine MIME type for file: {file_path}")
 
+        if force_ocr and mime_type == 'application/pdf':
+            return DocExtractor._handle_pdf_with_ocr(file_path)
+
         handler = DocExtractor._get_handlers().get(mime_type)
         if handler:
-            return handler(file_path)
+            try:
+                return handler(file_path)                
+            except Exception as e:
+                raise RuntimeError(f"Failed to extract content from {file_path.name}: {str(e)}") from e
         else:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
 
@@ -39,8 +45,8 @@ class DocExtractor:
     @staticmethod
     def extract_text(file_path):
         return '\n\n'.join(paragraph for _, paragraph in DocExtractor.extract_paragraphs(file_path))
-        
-        
+
+
     @staticmethod
     def _get_handlers():
         return {
@@ -71,6 +77,7 @@ class DocExtractor:
         for i, page in enumerate(doc):
             page_num = i + 1
             try:
+                # Pages with images are read by the OCR
                 if page.get_images(full=True):
                     ocr_page_data = DocExtractor.ocr.extract_pdf_data(file_path, i)
                     for block in ocr_page_data.blocks:
@@ -86,6 +93,21 @@ class DocExtractor:
                 raise RuntimeError(f"Failed to process page {page_num} of PDF: {str(e)}") from e
 
         return paragraphs
+    
+
+    @staticmethod
+    def _handle_pdf_with_ocr(file_path):
+        paragraphs = []
+        try:
+            doc = DocExtractor.ocr.extract_pdf_data(file_path)
+            for i, ocr_page_data in enumerate(doc.pages):
+                for block in ocr_page_data.blocks:
+                    paragraph = OCR._convert_block_data_to_paragraph(block)
+                    if paragraph.strip():
+                        paragraphs.append((i, paragraph.strip()))
+            return paragraphs
+        except Exception as e:
+            raise RuntimeError(f"Failed to process PDF with OCR: {str(e)}") from e
 
 
     @staticmethod
@@ -134,10 +156,13 @@ class DocExtractor:
 
     @staticmethod
     def _handle_plain_text(file_path):
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            text = f.read()
-            return [(None, p) for p in DocExtractor._split_into_paragraphs(text)]
-        
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+                return [(None, p) for p in DocExtractor._split_into_paragraphs(text)]
+        except Exception as e:
+            raise OSError(f"Error reading plain text: {str(e)}") from e
+
 
     @staticmethod
     def _split_into_paragraphs(text):
