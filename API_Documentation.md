@@ -78,6 +78,11 @@ The system automatically validates document metadata against the defined schemas
       "format": "binary",
       "description": "The document file to upload"
     },
+    "forceOCR": {
+      "type": "boolean",
+      "description": "Use the OCR only to extract text. The file must be a PDF for the OCR to work.",
+      "default": false
+    },
     "allowOverride": {
       "type": "boolean",
       "description": "Whether to allow overriding an existing document",
@@ -97,10 +102,6 @@ The system automatically validates document metadata against the defined schemas
         "docType": {
           "type": "string",
           "description": "Document type that matches a predefined schema"
-        },
-        "forceOCR": {
-          "type": "boolean",
-          "description": "Use the OCR only to extract text. The file must be a PDF for the OCR to work."
         },
         "accessGroups": {
           "type": "array",
