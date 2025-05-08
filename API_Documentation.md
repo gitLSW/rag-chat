@@ -229,6 +229,12 @@ Finally, the document's text content gets saved as a txt file.
 - **Request Schema**: `None`
 - **Response Schema**: Success/Failure Response with deleted document's metadata
 
+### Semantic Search
+
+After a user question was received, it gets vectorized into a sentence embedding and the VectorDB gets queried to find the nearest neighbour paragraph vector matches to the question vector in the embedding vector space.
+The `searchDepth` parameter determines how many nearest neighbours shall be retrieved.
+Now the system finds all the unique documents which the neighbours point
+
 #### `POST /search`
 - **Purpose**: Performs semantic search across documents.
 - **Request Schema**:
@@ -272,9 +278,7 @@ Finally, the document's text content gets saved as a txt file.
 
 ### LLM Chat
 
-After a user started a chat websocket and asks a question, his question gets vectorized into a sentence embedding and the VectorDB gets queried to find the nearest neighbour paragraph vector matches to the question vector in the embedding vector space.
-The `searchDepth` parameter determines how many nearest neighbours shall be retrieved.
-Now the system finds all the unique documents which the neighbours point to and reads them concurrently.
+After a user started a chat websocket and asks a question, a semantic search is performed on it and the system reads the found documents concurrently.
 Once read, the LLM will be asked to concurrently summarize the texts with respect to the users question.
 As soon as all summaries have been provided, they get shown to the LLM alongside the question.
 If the user enabled Database queries the LLM will also be shown all document schemata of the retrieved the documents' types.
