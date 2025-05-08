@@ -194,7 +194,7 @@ Finally, the document's text content gets saved as a txt file.
   "required": ["docData"]
 }
 ```
-- **Response Schema**: Same as createDocument response
+- **Response Schema**: Same as `POST /document` response
 
 #### `GET /documents/{doc_id}`
 - **Purpose**: Retrieves a document's metadata and text content.
