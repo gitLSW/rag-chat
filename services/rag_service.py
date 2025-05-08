@@ -169,6 +169,9 @@ class RAGService:
             if is_extract_valid:
                 # Overwrite extracted data with uploaded data
                 doc_data = { **extracted_doc_data, **doc_data }
+        elif doc_type:
+            # If a doc_type was defined, but no schema exists for it, raise an error
+            raise HTTPError(422, f'No JSON schema was found for docType "{doc_type}". Register a schema for it with POST /documentSchemata')
         else:
             doc_type = None
             doc_schema = BASE_DOC_SCHEMA
@@ -220,6 +223,7 @@ class RAGService:
         if doc_type != old_doc_type: # This will allow 2 None doc_type docs to 
             merge_existing = False
             
+        
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
             raise HTTPException(422, 'Unknown doc_type. Register the JSON schema with POST /documentSchemata first')
@@ -331,7 +335,7 @@ class RAGService:
             json_schema, doc_type = self._identify_doc_type(text)
 
         if not json_schema:
-            return None, None, None, False
+            return None, doc_type, None, False
 
         sampling_params = SamplingParams(
             temperature=0.1,
