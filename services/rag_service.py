@@ -160,7 +160,7 @@ class RAGService:
 
         # Extract JSON
         doc_type = doc_data.get('docType')
-        extracted_doc_data, doc_type, doc_schema, _ = await self.extract_json(doc_text, doc_type)
+        extracted_doc_data, doc_type, doc_schema, is_valid = await self.extract_json(doc_text, doc_type)
         
         if doc_schema:
             # Build final schema
@@ -168,7 +168,7 @@ class RAGService:
         else:
             doc_schema = BASE_DOC_SCHEMA
         
-        if extracted_doc_data:
+        if is_valid:
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
         
