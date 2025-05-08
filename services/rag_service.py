@@ -419,7 +419,11 @@ class RAGService:
         }
 
         # Select document type with highest normalized score
-        final_type = max(normalized_scores.items(), key=lambda x: x[1])[0]
+        final_type, max_normalized_score = max(normalized_scores.items(), key=lambda x: x[1])
+        
+        # If a document's best potential type didn't score above 30% of all the document's paragraphs, it is too ambigous to categorize.
+        if max_normalized_score < 0.3:
+            return None, None
 
         return self.doc_schemata[final_type], final_type
     
