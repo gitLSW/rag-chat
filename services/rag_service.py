@@ -220,9 +220,8 @@ class RAGService:
         merged_doc = { **old_doc, **doc_data }
         
         doc_type = merged_doc.get('docType')
-        if doc_type != old_doc_type: # This will allow 2 None doc_type docs to 
+        if doc_type != old_doc_type: # This will allow 2 None doc_type docs to merge
             merge_existing = False
-            
         
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
