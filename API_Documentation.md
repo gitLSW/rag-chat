@@ -78,12 +78,14 @@ The system aims to provide a semantic search and metadata extraction from natura
 After uploading a file, the system extracts its text as a string via different extraction libraries or an OCR, if the file is a scanned PDF (page contains a image).
 The extracted text gets split into paragraphs and the paragraphs get vectorized by the `BERT Sentance Transformer`.
 These paragraph vector embeddings get saved alongside the exact page and documentId in a VectorDB (`ChromaDB`).
-If no document metadata or type was provided the system will automatically try to find a document type by comparing the sentence emebddings of each paragraph to every previously defines JSON schema, by checking the alignment of the vectors via the dot-product.
+If no document metadata or type was provided the system will automatically try to find a document type by comparing the sentence emebddings of each paragraph to every previously defined JSON schema, by checking the alignment of the vectors via the dot-product.
 Only if they align above a certain threshold, will the document type receive a score point.
 After normalizing the scores for each document schema type, the document will be labelled by the highest scoring document type, as long as it scored above 20% of its paragraphs.
-If no custom metadata was provided and if a document type was provided or automatically found, a document metadata extraction will be performed.
+If a document type was provided or automatically determined, a document metadata extraction will be performed.
 The LLM (provided locally by `vLLM`) will be queried to fill the associated JSON schema of the document's type.
-If the validation against the document schema passed, it will be added to the document database (`MongoDB`).
+The extracted JSON metadata will be merged with and overwritten by the uploaded document metadata.
+The merged data gets validated against the document type's schema.
+If it passed, it will be added to the document database (`MongoDB`).
 Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
