@@ -74,7 +74,7 @@ The system automatically validates extracted and uploded document metadata again
 
 
 ### Document Processing & Storage
-The system aims to provide a semantic search and metadata extraction from natural text documents as well as a LOM chat infused with relevant context data.
+The system aims to provide a semantic search and metadata extraction from natural text documents as well as a LLM chat infused with relevant context data.
 After uploading a file, the system extracts its text as a string via different extraction libraries or an OCR, if the file is a scanned PDF (page contains a image).
 The extracted text gets split into paragraphs and the paragraphs get vectorized by the `BERT Sentence Transformer`.
 These paragraph vector embeddings get saved alongside the exact page and documentId in a VectorDB (`ChromaDB`).
