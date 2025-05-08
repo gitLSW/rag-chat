@@ -17,11 +17,13 @@ The public key will automatically retreived from the Auth server's URL, which ne
 
 
 ## Endpoints
-The system automatically validates document metadata against the defined schemas and enforces access controls based on user roles.
 
-#### 1. `POST /accessGroups`
+### Access groups
+Access Groups for each company must be registered previous to using them. Every document has a list of accessGroups associated with it. Administrator roles are always added by the system automatically. They are named `admin` in the System. 
+
+#### `POST /accessGroups`
 - **Purpose**: Creates a new access group for document permissions.
-- **Access Control**: Requires admin role
+- **Access Control**: Requires `admin` role
 - **Request Schema**:
 ```json
 {
@@ -37,9 +39,13 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Success/Failure Response
 
-#### 2. `POST /documentSchemata`
+
+### Document Schemata
+The system automatically validates extracted and uploded document metadata against the previously defined JSON schemata.
+
+#### `POST /documentSchemata`
 - **Purpose**: Defines a new JSON schema for a specific document type. Cannot override existing Schemata.
-- **Access Control**: Requires admin role
+- **Access Control**: Requires `admin` role
 - **Request Schema**:
 ```json
 {
@@ -60,13 +66,27 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Success/Failure Response with the added schema
 
-#### 3. `DELETE /documentSchemata/{doc_type}`
+#### `DELETE /documentSchemata/{doc_type}`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
 - **Access Control**: Requires admin role
 - **Request Schema**: `None`
 - **Response Schema**: Success/Failure Response
 
-#### 4. `POST /documents`
+
+### Document Processing & Storage
+The system aims to provide a semantic search and metadata extraction from natural text documents as well as a LOM chat infused with relevant context data.
+After uploading a file, the system extracts its text as a string via different extraction libraries or an OCR, if the file is a scanned PDF (page contains a image).
+The extracted text gets split into paragraphs and the paragraphs get vectorized by the `BERT Sentance Transformer`.
+These paragraph vector embeddings get saved alongside the exact page and documentId in a VectorDB (`ChromaDB`).
+If no document metadata or type was provided the system will automatically try to find a document type by comparing the sentence emebddings of each paragraph to every previously defines JSON schema, by checking the alignment of the vectors via the dot-product.
+Only if they align above a certain threshold, will the document type receive a score point.
+After normalizing the scores for each document schema type, the document will be labelled by the highest scoring document type, as long as it scored above 20% of its paragraphs.
+If no custom metadata was provided and if a document type was provided or automatically found, a document metadata extraction will be performed.
+The LLM (provided locally by `vLLM`) will be queried to fill the associated JSON schema of the document's type.
+If the validation against the document schema passed, it will be added to the document database (`MongoDB`).
+Finally, the document's text content gets saved a txt file.
+
+#### `POST /documents`
 - **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema.
 - **Request Schema**:
 ```json
@@ -143,7 +163,7 @@ The system automatically validates document metadata against the defined schemas
 }
 ```
 
-#### 5. `PUT /documents/{doc_id}`
+#### `PUT /documents/{doc_id}`
 - **Purpose**: Updates an existing document's metadata.
 - **Request Schema**:
 ```json
@@ -174,7 +194,7 @@ The system automatically validates document metadata against the defined schemas
 ```
 - **Response Schema**: Same as createDocument response
 
-#### 6. `GET /documents/{doc_id}`
+#### `GET /documents/{doc_id}`
 - **Purpose**: Retrieves a document's metadata and text content.
 - **Request Schema**: `None`
 - **Response Schema**:
@@ -202,12 +222,12 @@ The system automatically validates document metadata against the defined schemas
 }
 ```
 
-#### 7. `DELETE /documents/{doc_id}`
+#### `DELETE /documents/{doc_id}`
 - **Purpose**: Deletes a document by its ID.
 - **Request Schema**: `None`
 - **Response Schema**: Success/Failure Response with deleted document data
 
-#### 8. `POST /search`
+#### `POST /search`
 - **Purpose**: Performs semantic search across documents.
 - **Request Schema**:
 ```json
@@ -248,7 +268,18 @@ The system automatically validates document metadata against the defined schemas
 }
 ```
 
-#### 9. `WebSocket /chat`
+### LLM Chat
+
+After a user started a chat websocket and asks a question, his question gets vectorized into a sentence embedding and the VectorDB gets queried to find the nearest neighbour paragraph vector matches to the question vector in the embedding vector space.
+The `searchDepth` parameter determines how many nearest neighbours shall be retrieved.
+Now the system finds all the unique documents which the neighbours point to and reads them concurrently.
+Once read, the LLM will be asked to concurrently summarize the texts with respect to the users question.
+As soon as all summaries have been provided, they get shown to the LLM alongside the question.
+If the user enabled Database queries the LLM will also be shown all document schemata of the retrieved the documents' types.
+Additionally, it is informed of its abaility to perform database searches by writing them in tags.
+If the command was successful, the system will show the output to the LLM, which will now finally answer the question.
+
+#### `WebSocket /chat`
 - **Purpose**: Opens a web socket connection for streaming LLM responses.
 - **Request Schema**:
 ```json
