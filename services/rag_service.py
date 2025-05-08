@@ -36,14 +36,14 @@ BASE_DOC_SCHEMA = {
     "properties": {
         "id": {"type": "string"},
         "path": {"type": "string"},
-        "docType": {"type": "string"},
+        "docType": {"type": ["string", "null"]},
         "accessGroups": {
             "type": "array",
             "items": {"type": "string"},
             "minItems": 1
         }
     },
-    "required": ["id", "path", "docType", "accessGroups"]
+    "required": ["id", "path", "accessGroups"]
 }
 
 
@@ -161,6 +161,7 @@ class RAGService:
         # Extract JSON
         doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
+        doc_data['docType'] = doc_type
         
         if doc_schema:
             # Build final schema
@@ -210,11 +211,11 @@ class RAGService:
         
         old_doc = self.access_manager.has_doc_access(doc_id, user_access_role)
         
-        old_doc_type = old_doc['docType']
+        old_doc_type = old_doc.get('docType')
         merged_doc = { **old_doc, **doc_data }
         
         doc_type = merged_doc.get('docType')
-        if doc_type != old_doc_type:
+        if doc_type != old_doc_type: # This will allow 2 None doc_type docs to 
             merge_existing = False
             
         doc_schema = self.doc_schemata.get(doc_type)
@@ -503,12 +504,14 @@ class RAGService:
         for doc_data in docs_data:
             doc_id = doc_data['docId']
             page_num = doc_data['pageNum']
-            doc_types.add(doc_data['docType'])
+            doc_type = doc_data.get('docType')
+            if doc_type:
+                doc_types.add(doc_type)
     
-            if page_num is None:
-                doc_sources_map[doc_id] = None
-            else:
+            if page_num:
                 doc_sources_map[doc_id].add(page_num)
+            else:
+                doc_sources_map[doc_id] = None
             
             summarize_tasks.append(self._load_and_summarize_doc(doc_id, question))
     
