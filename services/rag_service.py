@@ -162,18 +162,18 @@ class RAGService:
         doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, _ = await self.extract_json(doc_text, doc_type)
         
-        if not doc_type:
-            raise HTTPException(500, 'docType was not provided and could not automatically be identifed')
-        
-        if not doc_schema:
+        if doc_schema:
             raise HTTPException(422, 'Unknown doc_type. Register the JSON schema with POST /documentSchemata first')
 
-        # Build final schema
-        doc_schema = self._merge_with_base_schema(doc_schema)
-
+            # Build final schema
+            doc_schema = self._merge_with_base_schema(doc_schema)
+        else:
+            doc_schema = BASE_DOC_SCHEMA
+        
         # Check if doc_data is valid and insert into DB
         if extracted_doc_data:
             doc_data = { **extracted_doc_data, **doc_data }
+        
         print(doc_data)
         jsonschema.validate(doc_data, doc_schema)
         self.json_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
