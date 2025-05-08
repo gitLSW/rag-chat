@@ -181,7 +181,7 @@ class LLMService:
         
         question_ids = []
         if question:
-            question_ids = self.tokenizer.encode(question, add_special_tokens=False)
+            question_ids = self.tokenizer.encode(question + '\n\n', add_special_tokens=False)
 
         # Adjust chunk size to account for question prepended
         chunk_size = self.max_tokens - len(question_ids)
