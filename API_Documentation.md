@@ -84,7 +84,7 @@ After normalizing the scores for each document schema type, the document will be
 If no custom metadata was provided and if a document type was provided or automatically found, a document metadata extraction will be performed.
 The LLM (provided locally by `vLLM`) will be queried to fill the associated JSON schema of the document's type.
 If the validation against the document schema passed, it will be added to the document database (`MongoDB`).
-Finally, the document's text content gets saved a txt file.
+Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
 - **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema.
