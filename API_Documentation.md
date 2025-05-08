@@ -141,7 +141,7 @@ Finally, the document's text content gets saved as a txt file.
   "required": ["file", "docData"]
 }
 ```
-- **Response Schema**: The added document's metadata
+- **Response Schema**: Success/Failure response with whe added document's metadata
 ```json
 {
   "type": "object",
@@ -199,7 +199,7 @@ Finally, the document's text content gets saved as a txt file.
 #### `GET /documents/{doc_id}`
 - **Purpose**: Retrieves a document's metadata and text content.
 - **Request Schema**: `None`
-- **Response Schema**:
+- **Response Schema**: Success/Failure response with whe retrieved document's metadata
 ```json
 {
   "type": "object",
@@ -227,7 +227,7 @@ Finally, the document's text content gets saved as a txt file.
 #### `DELETE /documents/{doc_id}`
 - **Purpose**: Deletes a document by its ID.
 - **Request Schema**: `None`
-- **Response Schema**: Success/Failure Response with deleted document data
+- **Response Schema**: Success/Failure Response with deleted document's metadata
 
 #### `POST /search`
 - **Purpose**: Performs semantic search across documents.
@@ -249,7 +249,7 @@ Finally, the document's text content gets saved as a txt file.
   "required": ["question"]
 }
 ```
-- **Response Schema**:
+- **Response Schema**: Success/Failure response with array of found paragraps' document IDs, page numbers and schema types
 ```json
 {
   "type": "object",
