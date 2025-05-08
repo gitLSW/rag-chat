@@ -118,11 +118,11 @@ Finally, the document's text content gets saved as a txt file.
           "description": "Unique identifier for the document"
         },
         "path": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Optional path for organizing documents"
         },
         "docType": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Document type that matches a predefined schema"
         },
         "accessGroups": {
@@ -141,7 +141,7 @@ Finally, the document's text content gets saved as a txt file.
   "required": ["file", "docData"]
 }
 ```
-- **Response Schema**:
+- **Response Schema**: The added document's metadata
 ```json
 {
   "type": "object",
@@ -152,7 +152,7 @@ Finally, the document's text content gets saved as a txt file.
       "properties": {
         "id": {"type": "string"},
         "path": {"type": "string"},
-        "docType": {"type": "string"},
+        "docType": {"type": ["string", "null"]},
         "accessGroups": {
           "type": "array",
           "items": {"type": "string"},
@@ -180,8 +180,8 @@ Finally, the document's text content gets saved as a txt file.
     "docData": {
       "type": "object",
       "properties": {
-        "path": {"type": "string"},
-        "docType": {"type": "string"},
+        "path": {"type": ["string", "null"]},
+        "docType": {"type": ["string", "null"]},
         "accessGroups": {
           "type": "array",
           "items": {"type": "string"},
@@ -210,8 +210,8 @@ Finally, the document's text content gets saved as a txt file.
       "properties": {
         "text": {"type": "string"},
         "id": {"type": "string"},
-        "path": {"type": "string"},
-        "docType": {"type": "string"},
+        "path": {"type": ["string", "null"]},
+        "docType": {"type": ["string", "null"]},
         "accessGroups": {
           "type": "array",
           "items": {"type": "string"},
@@ -262,7 +262,7 @@ Finally, the document's text content gets saved as a txt file.
         "properties": {
           "docId": {"type": "string"},
           "pageNum": {"type": "integer"},
-          "docType": {"type": "string"}
+          "docType": {"type": ["string", "null"]},
         }
       }
     }
