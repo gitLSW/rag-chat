@@ -210,7 +210,7 @@ Finally, the document's text content gets saved as a txt file.
       "properties": {
         "text": {"type": "string"},
         "id": {"type": "string"},
-        "path": {"type": ["string", "null"]},
+        "path": {"type": "string"},
         "docType": {"type": ["string", "null"]},
         "accessGroups": {
           "type": "array",
