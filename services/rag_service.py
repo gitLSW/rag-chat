@@ -161,7 +161,6 @@ class RAGService:
         # Extract JSON
         doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
-        doc_data['docType'] = doc_type
         
         if doc_schema:
             # Build final schema
@@ -171,7 +170,10 @@ class RAGService:
                 # Overwrite extracted data with uploaded data
                 doc_data = { **extracted_doc_data, **doc_data }
         else:
+            doc_type = None
             doc_schema = BASE_DOC_SCHEMA
+        
+        doc_data['docType'] = doc_type
         
         print(doc_data)
         # Check if doc_data is valid and insert into DB
@@ -329,7 +331,7 @@ class RAGService:
             json_schema, doc_type = self._identify_doc_type(text)
 
         if not json_schema:
-            return None, doc_type, json_schema, False
+            return None, None, None, False
 
         sampling_params = SamplingParams(
             temperature=0.1,
