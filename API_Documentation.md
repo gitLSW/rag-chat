@@ -19,7 +19,10 @@ The public key will automatically retreived from the Auth server's URL, which ne
 ## Endpoints
 
 ### Access groups
-Access Groups for each company must be registered previous to using them. Every document has a list of accessGroups associated with it. Administrator roles are always added by the system automatically. They are named `admin` in the System. 
+Access Groups for each company must be registered previous to using them.
+Every document has a list of accessGroups associated with it.
+Administrator roles are always added automatically by the system.
+They are named `admin` in the System. 
 
 #### `POST /accessGroups`
 - **Purpose**: Creates a new access group for document permissions.
