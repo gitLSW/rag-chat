@@ -107,20 +107,10 @@ class LLMService:
             raise ValueError('Unrealistic token size')
 
 
-    def _chunk_token_ids(self, token_ids: List[int], chunk_overlap=128) -> List[List[int]]:
-        stride = self.max_tokens - chunk_overlap
-        chunks = []
-        for start in range(0, len(token_ids), stride):
-            end = min(start + self.max_tokens, len(token_ids))
-            chunks.append(token_ids[start:end])
-            if end == len(token_ids):
-                break
-        return chunks
-
-
     async def query(
         self,
         prompt: str,
+        question: str = None,
         sampling_params: SamplingParams = None,
         stream: bool = False
     ) -> Union[str, AsyncGenerator[str, None]]:
@@ -132,42 +122,79 @@ class LLMService:
             )
 
         token_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
-        chunk_overlap = int(self.max_tokens * 0.15) # Make the chunk overlap relative to its size
-        token_chunks = self._chunk_token_ids(token_ids, chunk_overlap)
-        prompts = [self.tokenizer.decode(chunk, skip_special_tokens=True) for chunk in token_chunks]
+        chunk_overlap = int(self.max_tokens * 0.15)
+        token_chunks = self._chunk_token_ids(token_ids, chunk_overlap, question)
+        
+        # STREAMING: no chunking — stream token-by-token as it's generated
+        if stream and len(token_chunks) == 1:
+            # Token-by-token streaming for unchunked input
+            async for output in self.llm.generate(
+                prompt_token_ids=token_chunks[0],
+                sampling_params=sampling_params,
+                stream=True
+            ):
+                yield output.outputs[0].text
 
-        if stream:
-            async def stream_chunks() -> AsyncGenerator[str, None]:
-                loop = asyncio.get_event_loop()
-
-                # Each chunk will have its own stream generator
-                async def stream_single_chunk(chunk_prompt: str) -> AsyncGenerator[str, None]:
-                    generator = self.llm.generate(chunk_prompt, sampling_params, stream=True)
-                    async for output in generator:
-                        if isinstance(output, RequestOutput):
-                            yield output.outputs[0].text
-
-                stream_tasks = [stream_single_chunk(prompt) for prompt in prompts]
-
-                for stream in asyncio.as_completed([
-                    asyncio.create_task(self._consume_stream(s)) for s in stream_tasks
-                ]):
-                    async for part in await stream:
-                        yield part
-
-            return stream_chunks()
-
-        else:
-            loop = asyncio.get_event_loop()
+        # STREAMING: with chunking — generate concurrently, stream full results
+        elif stream:
+            # Concurrent, per-chunk generation — full text only
             tasks = [
-                loop.run_in_executor(None, self.llm.generate, prompt, sampling_params)
-                for prompt in prompts
+                asyncio.create_task(self._process_chunk(chunk, sampling_params))
+                for chunk in token_chunks
             ]
-            outputs = await asyncio.gather(*tasks)
-            return "\n".join(output.outputs[0].text for output in outputs)
+            for task in tasks:
+                yield await task
 
-    async def _consume_stream(self, stream_gen: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
-        async def wrapper():
-            async for chunk in stream_gen:
-                yield chunk
-        return wrapper()
+        # NON-STREAMING: generate concurrently and return final result
+        else:
+            # Non-streaming, batched generation
+            outputs = await asyncio.gather(*[
+                self._process_chunk(chunk, sampling_params)
+                for chunk in token_chunks
+            ])
+            return "\n\n".join(outputs)
+    
+
+    async def _process_chunk(
+        self,
+        chunk_token_ids: List[int],
+        sampling_params: SamplingParams
+    ) -> str:
+        output = await asyncio.to_thread(
+            self.llm.generate,
+            None,
+            sampling_params,
+            chunk_token_ids,
+            stream=False
+        )
+        return output.outputs[0].text
+
+
+    def _chunk_token_ids(
+        self,
+        token_ids: List[int],
+        chunk_overlap: int =128,
+        question: str = None
+    ) -> List[List[int]]:
+        stride = self.max_tokens - chunk_overlap
+        chunks = []
+        
+        question_ids = []
+        if question:
+            question_ids = self.tokenizer.encode(question, add_special_tokens=False)
+
+        # Adjust chunk size to account for question prepended
+        chunk_size = self.max_tokens - len(question_ids)
+
+        for i, start in enumerate(range(0, len(token_ids), chunk_size)):
+            end = min(start + chunk_size, len(token_ids))
+            if i != 0 and question:
+                chunk = question_ids + token_ids[start:end]
+            else:
+                chunk = token_ids[start:end]
+
+            chunks.append(chunk)
+            if end == len(token_ids):
+                break
+        return chunks
+

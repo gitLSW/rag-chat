@@ -343,14 +343,12 @@ class RAGService:
             # stop=["\n\n", "\n", "Q:", "###"]
         )
 
-        prompt = f"""This is a JSON Schema which you need to fill:
+        question = f"""This is a JSON Schema which you need to fill:
 
             {json.dumps(json_schema)}
 
             ### TASK REQUIREMENT
             You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
-            
-            {text}
 
             ### STRICT RULES FOR GENERATING OUTPUT:
             **ALWAYS PROVIDE YOUR FINAL ANSWER**:
@@ -368,8 +366,10 @@ class RAGService:
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
             Write your reasoning below here inside think tags and once you are done thinking, provide your answer in the described format !"""
+        
+        prompt = question + "\n\n" + text
 
-        res = await RAGService.llm_service.query(prompt, sampling_params)
+        res = await RAGService.llm_service.query(prompt, question, sampling_params)
         
         parsed_json = None # prevents UnboundLocalError !
         try:
@@ -464,7 +464,7 @@ class RAGService:
         # First LLM query - watch for mongo_json commands
         answer_buffer = ""
         mongo_query = None
-        async for chunk in RAGService.llm_service.query(prompt, stream=True):
+        async for chunk in RAGService.llm_service.query(prompt, question, stream=True):
             answer_buffer += chunk
             yield chunk
             
@@ -489,7 +489,7 @@ class RAGService:
                 )
                 
                 # Stream the second LLM response
-                async for chunk in RAGService.llm_service.query(follow_up_prompt, stream=True):
+                async for chunk in RAGService.llm_service.query(follow_up_prompt, question, stream=True):
                     yield chunk
             else:
                 # The LLM provided a invalid database query
@@ -531,8 +531,9 @@ class RAGService:
         async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
             doc_text = await f.read()
         
-        summarize_prompt = f'{doc_text}\n\nSummarize all the relevant information and facts needed to answer the following question from the previous text:\n\n{question}'
-        summary = await RAGService.llm_service.query(summarize_prompt)
+        question = f'Summarize all the relevant information and facts needed to answer the following question from the text below:\n\n{question}'
+        prompt = question + '\n\n' + doc_text
+        summary = await RAGService.llm_service.query(prompt, question)
         return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
     
     
