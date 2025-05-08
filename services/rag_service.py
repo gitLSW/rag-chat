@@ -43,7 +43,7 @@ BASE_DOC_SCHEMA = {
             "minItems": 1
         }
     },
-    "required": ["id", "path", "accessGroups"]
+    "required": ["id", "path", "docType", "accessGroups"]
 }
 
 
