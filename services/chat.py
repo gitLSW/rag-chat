@@ -1,146 +1,143 @@
-import os
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
-from typing import AsyncGenerator, List, Dict, Optional
+from typing import AsyncGenerator, List, Optional
 from ..get_env_var import get_env_var
 
+@dataclass
+class ChatEntry:
+    prompt: str
+    question: Optional[str]
+    timestamp: datetime
+    answer: str
+    answer_timestamp: Optional[datetime]
+    completed: bool
+    partial_answer: str = ""  # Used during streaming
+
+
 class Chat:
-    _llm_service = LLMService()
-    
+    _llm_service = LLMService()  # Shared static LLM instance across sessions
+
+
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.history: List[Dict] = []
+        self.history: List[ChatEntry] = []
         self._current_task: Optional[asyncio.Task] = None
-        self._current_stream_queue = None
-        self._partial_answer = ""
+        self._current_stream_queue: Optional[asyncio.Queue] = None
+        self._current_request_id: Optional[str] = None
 
 
     async def query(
         self,
         prompt: str,
-        question: str = None,
+        question: Optional[str] = None,
         show_chat_history: bool = False
     ) -> AsyncGenerator[str, None]:
-        # Cancel any existing generation
-        if self._current_task and not self._current_task.done():
-            self._current_task.cancel()
+        # Cancel any existing generation first
+        self.stop()
 
-        # Create new history entry
-        entry = {
-            'prompt': prompt,
-            'question': question,
-            'timestamp': datetime.now(),
-            'answer': '',
-            'answer_timestamp': None,
-            'completed': False
-        }
+        # Build final prompt with optional chat history
+        final_prompt = self._build_history_prompt(prompt, show_chat_history)
+
+        # Create new chat entry
+        entry = ChatEntry(
+            prompt=prompt,
+            question=question,
+            timestamp=datetime.now(),
+            answer='',
+            answer_timestamp=None,
+            completed=False
+        )
         self.history.append(entry)
 
-        # Build full prompt with history if needed
-        final_prompt = self._build_full_prompt(prompt, question, show_chat_history)
-        
-        # Create communication queue
+        # Stream queue for chunk communication
         self._current_stream_queue = asyncio.Queue()
-        self._current_task = asyncio.create_task(
-            self._execute_generation(final_prompt, entry)
-        )
 
-        # Stream results
+        # Kick off the streaming generation
+        async def run():
+            try:
+                stream = self._llm_service.query(
+                    prompt=final_prompt,
+                    question=None,  # Already incorporated
+                    stream=True
+                )
+
+                # Pull request ID from generator
+                self._current_request_id = stream.request_id  # Assumes it's exposed here
+
+                async for chunk in stream:
+                    await self._current_stream_queue.put(chunk)
+                    entry.answer += chunk
+                    entry.partial_answer += chunk
+                entry.completed = True
+                entry.answer_timestamp = datetime.now()
+
+            except asyncio.CancelledError:
+                # If manually stopped
+                self._llm_service.cancel(self._current_request_id)
+            finally:
+                await self._current_stream_queue.put(None)
+
+        self._current_task = asyncio.create_task(run())
+
+        # Yield chunks from the queue
         try:
             while True:
                 chunk = await self._current_stream_queue.get()
-                if chunk is None:  # End of generation
-                    entry['completed'] = True
-                    entry['answer_timestamp'] = datetime.now()
+                if chunk is None:
                     break
-                entry['answer'] += chunk
-                self._partial_answer += chunk
                 yield chunk
         finally:
+            # Cleanup after generation ends
             self._current_task = None
             self._current_stream_queue = None
-            if not entry['completed']:
-                self._partial_answer = ""  # Reset if not completed
-
-
-    async def _execute_generation(self, prompt: str, entry: Dict):
-        """Run generation and put results into queue"""
-        try:
-            stream = self._llm_service.query(
-                prompt=prompt,
-                question=None,  # Already incorporated into prompt
-                sampling_params=None,
-                stream=True
-            )
-            
-            async for chunk in stream:
-                await self._current_stream_queue.put(chunk)
-            await self._current_stream_queue.put(None)
-        except asyncio.CancelledError:
-            await self._current_stream_queue.put(None)
-            entry['completed'] = False
-            raise
+            self._current_request_id = None
 
 
     def stop(self):
-        """Stop current generation"""
+        """Stop the current generation safely without affecting other chats."""
         if self._current_task and not self._current_task.done():
             self._current_task.cancel()
-            self._partial_answer = ""
+        if self._current_request_id:
+            self._llm_service.cancel(self._current_request_id)
+        self._current_task = None
+        self._current_request_id = None
 
 
     async def resume(self) -> AsyncGenerator[str, None]:
-        """Resume generation with full history context"""
-        if not self._partial_answer:
-            raise ValueError("Nothing to resume")
+        """Resume from the last prompt and partial answer."""
+        if not self.history or not self.history[-1].partial_answer:
+            raise ValueError("No interrupted generation to resume from.")
 
-        # Rebuild prompt with history and partial answer
         last_entry = self.history[-1]
-        prompt = self._build_full_prompt(
-            prompt=last_entry['prompt'],
-            question=last_entry['question'],
-            show_chat_history=True
-        ) + self._partial_answer
 
-        # Create new entry for the continuation
+        resume_prompt = self._build_history_prompt(
+            prompt=last_entry.prompt,
+            show_chat_history=True
+        ) + last_entry.partial_answer
+
         return self.query(
-            prompt=prompt,
-            question="[CONTINUE]",  # Marker for continuation
+            prompt=resume_prompt,
+            question="[CONTINUE]",
             show_chat_history=False
         )
 
 
-    def _build_full_prompt(self, prompt: str, question: str, show_chat_history: bool) -> str:
-        """Construct the final prompt with chat history"""
+    def _build_history_prompt(self, prompt: str, show_chat_history: bool) -> str:
+        """Prepend full chat history to the current prompt if requested."""
         if not show_chat_history:
-            return f"{prompt}\n{question}" if question else prompt
-
-        history = []
+            return prompt
+    
+        history_parts = []
         for entry in self.history:
-            # Add previous Q&A pairs
-            history.append(
-                f"User: {entry['prompt']}"
-                + (f"\nQuestion: {entry['question']}" if entry['question'] else "")
-            )
-            if entry['answer']:
-                history.append(f"Assistant: {entry['answer']}")
-
-        # Add current prompt
-        current = f"User: {prompt}"
-        if question:
-            current += f"\nQuestion: {question}"
-            
-        return "\n\n".join(history + [current])
+            history_parts.append(f"User: {entry.prompt}")
+            if entry.answer:
+                history_parts.append(f"Assistant: {entry.answer}")
+    
+        return "\n\n".join(history_parts + [f"User: {prompt}"])
 
 
     @property
-    def chat_history(self) -> List[Dict]:
-        """Get complete chat history with metadata"""
-        return [{
-            'prompt': e['prompt'],
-            'question': e['question'],
-            'timestamp': e['timestamp'],
-            'answer': e['answer'],
-            'answer_timestamp': e['answer_timestamp'],
-            'completed': e['completed']
-        } for e in self.history]
+    def chat_history(self) -> List[ChatEntry]:
+        """Return structured chat history."""
+        return self.history
