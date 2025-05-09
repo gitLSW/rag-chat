@@ -58,7 +58,7 @@ class Chat:
             try:
                 stream = self._llm_service.query(
                     prompt=final_prompt,
-                    question=None,  # Already incorporated
+                    question=question,
                     stream=True
                 )
 
