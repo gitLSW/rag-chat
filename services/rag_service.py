@@ -81,9 +81,8 @@ class RAGService:
         with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
             self.doc_schemata = json.loads(f.read())
 
-        client = MongoClient(MONGO_DB_URL)
-
         # Create or connect to database
+        client = MongoClient(MONGO_DB_URL)
         self.json_db = client[company_id]['docs']
 
 

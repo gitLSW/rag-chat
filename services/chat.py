@@ -5,7 +5,7 @@ import aiofiles
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Optional, Dict
 from ..get_env_var import get_env_var
 from vllm_service import LLMService
 from rag_service import get_company_rag_service
@@ -31,7 +31,7 @@ class Chat:
         self.rag_service = get_company_rag_service(company_id)
         self.mongo_db_connector = None
         
-        self._current_task: Optional[asyncio.Task] = None
+        self._generation_task: Optional[asyncio.Task] = None
         self._current_stream_queue: Optional[asyncio.Queue] = None
         self._current_req_id: Optional[str] = None
 
@@ -49,7 +49,7 @@ class Chat:
             raise ValueError('Either search_depth or use_db are allowed, not both.')
 
         prompt = message
-        
+        doc_summary_context = None
         if use_db:
             db_query, db_response = self.llm_db_query(message, doc_summaries, is_reasoning_model)
             if db_response:
@@ -96,14 +96,13 @@ class Chat:
                     await self._current_stream_queue.put(chunk)
                     entry.answer += chunk
                 entry.completed = True
-
             except asyncio.CancelledError:
                 # If manually stopped
                 self.llm_service.cancel(self._current_req_id)
             finally:
                 await self._current_stream_queue.put(None)
 
-        self._current_task = asyncio.create_task(run())
+        self._generation_task = asyncio.create_task(run())
 
         # Yield chunks from the queue
         try:
@@ -117,18 +116,19 @@ class Chat:
                 yield self._generate_source_references_str(doc_sources_map)
         finally:
             # Cleanup after generation ends
-            self._current_task = None
+            self._generation_task = None
             self._current_stream_queue = None
             self._current_req_id = None
 
 
     def stop(self):
         """Stop the current generation safely without affecting other chats."""
-        if self._current_task and not self._current_task.done():
-            self._current_task.cancel()
+        if self._generation_task and not self._generation_task.done():
+            self._generation_task.cancel()
         if self._current_req_id:
             self.llm_service.cancel(self._current_req_id)
-        self._current_task = None
+
+        self._generation_task = None
         self._current_req_id = None
 
 
@@ -191,15 +191,20 @@ class Chat:
         txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
         async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
             doc_text = await f.read()
-        
+
         message = f'Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}'
         
         summary = ''
-        async for output in Chat.llm_service.query(message, doc_text, process_chunks_concurrently=True):
-            summary += output
+        req_id = f"{self.company_id}-{self.session_id}-doc-{doc_id}"
+
+        try:
+            async for output in Chat.llm_service.query(message, doc_text, process_chunks_concurrently=True, req_id=req_id):
+                summary += output
+        except asyncio.CancelledError:
+            Chat.llm_service.cancel(req_id)
 
         return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
-    
+
     
     def _generate_source_references_str(self, doc_sources_map):
         """Generate the source references string."""
@@ -229,18 +234,23 @@ class Chat:
         if is_reasoning_model:
             context += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
         
+        req_id = f"{self.company_id}-{self.session_id}-mongo"
+
         answer_buffer = ''
         mongo_query = None
-        async for chunk in self.llm_service.query(message, context, allow_chunking=False):
-            answer_buffer += chunk
-            
-            if chunk.contains('`'):
-                # Check for complete mongo_json block
-                mongo_match = re.search(r"```mongo_json\s*(.*?)\s*```", answer_buffer, re.DOTALL)
-                if mongo_match:
-                    mongo_query = mongo_match.group(1)
-                    break  # Stop the first generation
-        
+        try:
+            async for chunk in self.llm_service.query(message, context, allow_chunking=False, req_id=req_id):
+                answer_buffer += chunk
+
+                if chunk.contains('`'):
+                    # Check for complete mongo_json block
+                    mongo_match = re.search(r"mongo_json\s*(.*?)\s*", answer_buffer, re.DOTALL)
+                    if mongo_match:
+                        mongo_query = mongo_match.group(1)
+                        break  # Stop the first generation
+        except asyncio.CancelledError:
+            self.llm_service.cancel(req_id)
+
         # If we found a mongo query, execute it and return it
         if mongo_query:
             # Init MongoDBConnector
