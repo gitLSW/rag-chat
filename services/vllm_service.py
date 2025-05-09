@@ -19,7 +19,7 @@ class LLMService:
     # Initialize the vLLM engine.
     llm = LLM(
         # Model parameters (https://docs.vllm.ai/en/latest/api/offline_inference/llm.html)
-        model=self.model,  # Default model name or path
+        model=LLM_MODEL,  # Default model name or path
             # tokenizer=None,  # Defaults to the model's tokenizer
             # tokenizer_mode="auto",  # Automatically selects the tokenizer mode
         trust_remote_code=not IS_PRODUCTION,  # Does not trust remote code execution by default
