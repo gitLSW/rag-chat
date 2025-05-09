@@ -9,7 +9,7 @@ from mimetypes import guess_type
 from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket
 from pydantic import BaseModel
 
-from services.rag_service import RAGService
+from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
 from middleware.auth.token_middleware import TokenMiddleware
 from middleware.auth.api_access_middlware import APIAccessMiddleware
@@ -70,22 +70,6 @@ class UpdateDocReq(BaseModel):
     #     docType: Optional[str] = oldDocData.docType
     #     # more fields according to the doc_type's JSON Schema
     # }
-
-
-# -----------------------------
-# Helper to Init Company Server
-# -----------------------------
-
-rag_service_cache = {}
-def get_company_rag_service(company_id):
-    rag_service = rag_service_cache.get(company_id)
-    if rag_service:
-        return rag_service
-    
-    rag_service = RAGService(company_id)
-    rag_service_cache[company_id] = rag_service
-    return rag_service
-    
 
 
 # -----------------------------

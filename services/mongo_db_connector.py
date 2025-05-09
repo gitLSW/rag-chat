@@ -31,7 +31,7 @@ class MongoDBConnector:
                 json_cmd = json.loads(json_cmd)
             except json.JSONDecodeError as e:
                 # Invalid json_cmd
-                return None
+                return None, None
         
         try:
             # Construct credentials
@@ -47,10 +47,10 @@ class MongoDBConnector:
             )
         except MissingEnvVarError as e:
             logger.critical(f"LLM User password not found for company {self.company_id}")
-            return None
+            return None, None
         except Exception as e:
             logger.error(f"Error connecting LLM User to mongo db for company {self.company_id} with user {username}")
-            return None
+            return None, None
         
         company_db = client[self.company_id]
         
@@ -59,18 +59,17 @@ class MongoDBConnector:
         if view_name not in company_db.list_collection_names():
             # TODO: log error: 
             logger.critical(f'The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role with POST /accessGroups !')
-            return None
+            return None, None
             
         try:
             # Modify the command to use the view instead of base collection
             modified_cmd = self._rewrite_command(json_cmd, view_name)
             
             # Execute the command
-            result = company_db.command(modified_cmd)
-            return result
+            return modified_cmd, company_db.command(modified_cmd)
         except Exception as e:
             logger.warning(f"Error executing MongoDB command:\nmongo command: {json.dumps(json_cmd)}\n{e}")
-            return None
+            return None, None
 
 
     def _rewrite_command(self, original_cmd, view_name):

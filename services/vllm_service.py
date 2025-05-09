@@ -1,9 +1,15 @@
 import os
 import asyncio
-from typing import List, AsyncGenerator, Union
+import re
+from typing import List, AsyncGenerator, Optional, Dict
+from dataclasses import dataclass
+from datetime import datetime
+from fastapi import WebSocket
 from ..get_env_var import get_env_var
-from vllm import LLM, SamplingParams, RequestOutput
+from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer, AutoConfig
+from collections import defaultdict
+import json
 
 # Load environment variables
 LLM_MODEL = get_env_var('LLM_MODEL')
@@ -11,9 +17,14 @@ IS_PRODUCTION = get_env_var('IS_PRODUCTION')
 
 class LLMService:
     def __init__(self):
-        self.model = LLM_MODEL
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model)
-        
+        self.model_name = LLM_MODEL
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        config = AutoConfig.from_pretrained(self.model_name)
+
+        self.max_tokens = getattr(config, "max_position_embeddings", self.tokenizer.model_max_length)
+        if self.max_tokens == -1 or self.max_tokens > 10_000:
+            raise ValueError('Unrealistic token size')
+
         # Initialize the vLLM engine.
         self.llm = LLM(
             # Model parameters (https://docs.vllm.ai/en/latest/api/offline_inference/llm.html)
@@ -99,109 +110,111 @@ class LLMService:
                 # speculative_config=None  # No configuration for speculative decoding
         )
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model)
-        config = AutoConfig.from_pretrained(self.model)
-
-        self.max_tokens = getattr(config, "max_position_embeddings", self.tokenizer.model_max_length)
-        if self.max_tokens == -1 or 10_000 < self.max_tokens:
-            raise ValueError('Unrealistic token size')
-
 
     async def query(
         self,
         prompt: str,
-        question: str = None,
-        req_id: str,
-        sampling_params: SamplingParams = None,
-        stream: bool = False
-    ) -> Union[str, AsyncGenerator[str, None]]:
+        context: Optional[str] = None,
+        history: Optional[str] = None,
+        req_id: str = None,
+        sampling_params: Optional[SamplingParams] = None,
+        allow_chunking: bool = True,
+        process_chunks_concurrently: bool = True,
+    ) -> AsyncGenerator[str, None]:
         if sampling_params is None:
-            sampling_params = SamplingParams(
-                temperature=0.3,
-                top_p=0.6,
-                max_tokens=256
-            )
+            sampling_params = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=256)
 
-        token_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
-        chunk_overlap = int(self.max_tokens * 0.15)
-        token_chunks = self._chunk_token_ids(token_ids, chunk_overlap, question)
-        
-        # STREAMING: no chunking — stream token-by-token as it's generated
-        if stream and len(token_chunks) == 1:
-            # Token-by-token streaming for unchunked input
+        chunks = self._get_chunks(prompt, context, history, allow_chunking)
+
+        # If only one chunk, always stream each new token
+        if len(chunks) == 1:
             async for output in self.llm.generate(
-                prompt_token_ids=token_chunks[0],
+                prompt_token_ids=chunks[0],
                 sampling_params=sampling_params,
-                req_id=req_id,
+                request_id=req_id,
                 stream=True
             ):
                 yield output.outputs[0].text
+            return
 
-        # STREAMING: with chunking — generate concurrently, stream full results
-        elif stream:
-            # Concurrent, per-chunk generation — full text only
+        # Multiple chunks: concurrent full or sequential streaming
+        if process_chunks_concurrently:
+            async def _generate_full(token_ids) -> str:
+                output = await asyncio.to_thread(
+                    self.llm.generate,
+                    token_ids,
+                    sampling_params,
+                    request_id=req_id,
+                    stream=False
+                )
+                return output.outputs[0].text
+            
             tasks = [
-                asyncio.create_task(self._process_chunk(chunk, sampling_params, req_id))
-                for chunk in token_chunks
+                asyncio.create_task(_generate_full(c, sampling_params))
+                for c in chunks
             ]
             for task in tasks:
-                yield await task
-
-        # NON-STREAMING: generate concurrently and return final result
+                text = await task
+                yield text
         else:
-            # Non-streaming, batched generation
-            outputs = await asyncio.gather(*[
-                self._process_chunk(chunk, sampling_params, req_id)
-                for chunk in token_chunks
-            ])
-            return "\n\n".join(outputs)
-    
-
-    async def _process_chunk(
-        self,
-        chunk_token_ids: List[int],
-        sampling_params: SamplingParams,
-        req_id: str,
-    ) -> str:
-        output = await asyncio.to_thread(
-            self.llm.generate,
-            None,
-            sampling_params,
-            chunk_token_ids,
-            req_id=req_id,
-            stream=False
-        )
-        return output.outputs[0].text
+            for chunk in chunks:
+                async for output in self.llm.generate(
+                    prompt_token_ids=chunk,
+                    sampling_params=sampling_params,
+                    request_id=req_id,
+                    stream=True
+                ):
+                    yield output.outputs[0].text
 
 
-    def _chunk_token_ids(
-        self,
-        token_ids: List[int],
-        chunk_overlap: int =128,
-        question: str = None
-    ) -> List[List[int]]:
-        stride = self.max_tokens - chunk_overlap
-        chunks = []
+    def cancel(self, req_id: str):
+        """
+        Cancel an ongoing request by its request ID.
+        """
+        try:
+            self.llm.abort(req_id)
+        except Exception as e:
+            # Log or handle specific errors as needed
+            raise RuntimeError(f"Failed to cancel request {req_id}: {str(e)}")
         
-        question_ids = []
-        if question:
-            question_ids = self.tokenizer.encode(question + '\n\n', add_special_tokens=False)
 
-        # Adjust chunk size to account for question prepended
-        chunk_size = self.max_tokens - len(question_ids)
+    def _get_chunks(self, prompt, context, history, allow_chunking):
+        # Tokenize prompt and optional context
+        prompt_ids = self.tokenizer.encode('\n\n' + prompt + '\n\n', add_special_tokens=False)
+        context_ids = self.tokenizer.encode(context, add_special_tokens=False) if context else []
+        history_ids = self.tokenizer.encode(history, add_special_tokens=False) if history else []
 
-        for i, start in enumerate(range(0, len(token_ids), chunk_size)):
-            end = min(start + chunk_size, len(token_ids))
-            if i != 0 and question: # Prepend the core user question to each chunk, except the first (where the question is already in the prompt)
-                chunk = question_ids + token_ids[start:end]
-            else:
-                chunk = token_ids[start:end]
+        if self.max_tokens < len(prompt_ids):
+            raise ValueError('Prompt is too long for LLM context frame')
 
-            chunks.append(chunk)
-            if end == len(token_ids):
-                break
+        # Enforce prompt size <= 1/4 frame
+        quarter_frame = self.max_tokens // 4
+        if self.max_tokens < len(prompt_ids) + len(context_ids): # chunking occurrs
+            if quarter_frame < len(prompt_ids):
+                raise ValueError('Prompt is too long for LLM context frame')
+            
+            if not allow_chunking:
+                raise ValueError('Prompt and context are too long and chunking was disallowed')
+            
+        chunks = []
+        available_per_chunk = self.max_tokens - len(prompt_ids)
+
+        # Take the last chunk from the chat history and append the prompt
+        if history_ids:
+            chunk_ids = history_ids[-available_per_chunk:] + prompt_ids
+            if len(chunk_ids) + len(context_ids) < self.max_tokens:
+                return chunks.append(chunk_ids + context_ids) # Everything fits in one chunk
+            chunks.append(chunk_ids)
+        
+        # Build chunks: always include at least the prompt
+        if context_ids:
+            # Available space per chunk after the prompt
+            for start in range(0, len(context_ids), available_per_chunk):
+                end = min(start + available_per_chunk, len(context_ids))
+                chunk_ids = prompt_ids + context_ids[start:end]
+                chunks.append(chunk_ids)
+
+        if not chunks:
+            chunks.append([prompt_ids])
+
         return chunks
-
-
-    async def cancel(self, req_id: str):
-        await self.llm.abort(req_id)

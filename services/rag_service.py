@@ -1,13 +1,10 @@
-import re
 import os
+import re
 import json
 import logging
-from collections import defaultdict
 from ..get_env_var import get_env_var
 
 from filelock import FileLock
-import asyncio
-import aiofiles
 
 import jsonschema
 from fastapi import HTTPException
@@ -22,7 +19,6 @@ from vllm import SamplingParams
 from vllm_service import LLMService
 from doc_extractor import DocExtractor
 from doc_path_classifier import DocPathClassifier
-from mongo_db_connector import MongoDBConnector
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +76,6 @@ class RAGService:
         self.access_manager = get_access_manager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         self.doc_path_classifier = DocPathClassifier(company_id)
-        self.mongo_db_connector = MongoDBConnector(company_id)
 
         self.schemata_path = f'./companies/{company_id}/doc_schemata.json'
         with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -171,7 +166,7 @@ class RAGService:
                 doc_data = { **extracted_doc_data, **doc_data }
         elif doc_type:
             # If a doc_type was defined, but no schema exists for it, raise an error
-            raise HTTPError(422, f'No JSON schema was found for docType "{doc_type}". Register a schema for it with POST /documentSchemata')
+            raise HTTPException(422, f'No JSON schema was found for docType "{doc_type}". Register a schema for it with POST /documentSchemata')
         else:
             doc_type = None
             doc_schema = BASE_DOC_SCHEMA
@@ -277,21 +272,21 @@ class RAGService:
         return OKResponse(f'Successfully deleted Document {doc_id}', doc_data)
     
 
-    def find_docs(self, question, n_results, user_access_role):
+    def find_docs(self, message, n_results, user_access_role):
         """
-        Retrieves the most relevant document chunks for a given question using semantic search between question and known paragraphs
+        Retrieves the most relevant document chunks for a given message using semantic search between message and known paragraphs
 
         Args:
-            question (str): User's query or question.
+            message (str): User's query or message.
             n_results (int): Number of top-matching results to return.
 
         Returns:
             list: Metadata entries (doc_id, page_num and doc_type) for the top matches.
         """
-        # Convert user question into an embedding vector
-        question_embedding = RAGService.embedding_model.encode(question).tolist()
-        # Perform semantic search in ChromaDB (based on embedding similarity between question and the paragraphs of all document)
-        results = self.vector_db.query(query_embeddings=[question_embedding], n_results=n_results)
+        # Convert user message into an embedding vector
+        message_embedding = RAGService.embedding_model.encode(message).tolist()
+        # Perform semantic search in ChromaDB (based on embedding similarity between message and the paragraphs of all document)
+        results = self.vector_db.query(query_embeddings=[message_embedding], n_results=n_results)
         
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
@@ -343,12 +338,14 @@ class RAGService:
             # stop=["\n\n", "\n", "Q:", "###"]
         )
 
-        question = f"""This is a JSON Schema which you need to fill:
+        prompt = f"""This is a JSON Schema which you need to fill:
 
             {json.dumps(json_schema)}
 
             ### TASK REQUIREMENT
             You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
+            
+            {text}
 
             ### STRICT RULES FOR GENERATING OUTPUT:
             **ALWAYS PROVIDE YOUR FINAL ANSWER**:
@@ -367,19 +364,17 @@ class RAGService:
             
             Write your reasoning below here inside think tags and once you are done thinking, provide your answer in the described format !"""
         
-        prompt = question + "\n\n" + text
-
-        res = await RAGService.llm_service.query(prompt, question, sampling_params)
-        
         parsed_json = None # prevents UnboundLocalError !
         try:
+            res = await RAGService.llm_service.query(prompt, sampling_params, allow_chunking=False)
+
             answer_json = re.search(r"```json\s*(.*?)\s*```", res, re.DOTALL).group(1)
             parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
             return parsed_json, doc_type, json_schema, True
         except jsonschema.exceptions.ValidationError as e:
             return parsed_json, doc_type, json_schema, False
-        except (IndexError, json.JSONDecodeError) as e:
+        except (ValueError, IndexError, json.JSONDecodeError) as e:
             print(f"Failed to extract or parse JSON from model response: {e}")
             return None, doc_type, json_schema, False
     
@@ -432,148 +427,8 @@ class RAGService:
             return None, None
 
         return self.doc_schemata[final_type], final_type
-    
-    
-    async def rag_query(self, question, n_results, user_access_role):
-        """
-        Answers a user question by retrieving relevant document content and querying a local LLM.
-        
-        Args:
-            question (str): The user's natural language question.
-            n_results (int): Number of documents to retrieve
-            user_access_role (str): User's access role for filtering documents
-        
-        Yields:
-            str: Streamed LLM response chunks
-        """
-        # Retrieve relevant documents
-        docs_data = self.find_docs(question, n_results, user_access_role).data
-        
-        # Process documents and prepare summaries
-        doc_summaries, doc_types, doc_sources_map = await self._summarize_docs(docs_data, question)
-        
-        async for chunk in self._query_llm(question, doc_summaries, doc_types, doc_sources_map, user_access_role):
-            yield chunk
-        
-    
-    async def _query_llm(self, question, doc_summaries, doc_types, doc_sources_map, user_access_role, allow_mongo_db_query=True):
-        """ Generates the prompt and queries the LLM """
-        # Build the initial prompt
-        prompt = self._build_prompt(question, doc_summaries, doc_types, allow_mongo_db_query)
-        
-        # First LLM query - watch for mongo_json commands
-        answer_buffer = ""
-        mongo_query = None
-        async for chunk in RAGService.llm_service.query(prompt, question, stream=True):
-            answer_buffer += chunk
-            yield chunk
-            
-            if allow_mongo_db_query and chunk.contains('`'):
-                # Check for complete mongo_json block
-                mongo_match = re.search(r"```mongo_json\s*(.*?)\s*```", answer_buffer, re.DOTALL)
-                if mongo_match:
-                    mongo_query = mongo_match.group(1)
-                    break  # Stop the first generation
-        
-        # If we found a mongo query, execute it and do second LLM call
-        if mongo_query and allow_mongo_db_query:
-            # Execute MongoDB query
-            mongo_result = self.mongo_db_connector.run(mongo_query, user_access_role)
-            if mongo_result:
-                # Build follow-up prompt with MongoDB results
-                follow_up_prompt = (
-                    f'{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n\n'
-                    f'Document summaries:\n\n{"\n\n\n".join(doc_summaries)}\n\n\n'
-                    f'Here is a helpful database query and respone: \n\n{json.dumps(mongo_result, indent=2)}\n\n\n'
-                    f'Please answer the question "{question}" briefly and precisely using all the available information.'
-                )
-                
-                # Stream the second LLM response
-                async for chunk in RAGService.llm_service.query(follow_up_prompt, question, stream=True):
-                    yield chunk
-            else:
-                # The LLM provided a invalid database query
-                async for chunk in self._query_llm(question, doc_summaries, doc_types, doc_sources_map, user_access_role, allow_mongo_db_query=False):
-                    yield chunk
-        
-        # Stream the document sources string at the very end
-        yield self._generate_source_references_str(doc_sources_map)
-    
-    
-    async def _summarize_docs(self, docs_data, question):
-        """Process documents concurrently to generate summaries and collect metadata."""
-        doc_types = set()
-        doc_sources_map = defaultdict(set)
-        summarize_tasks = []
-        
-        for doc_data in docs_data:
-            doc_id = doc_data['docId']
-            page_num = doc_data['pageNum']
-            doc_type = doc_data.get('docType')
-            if doc_type:
-                doc_types.add(doc_type)
-    
-            if page_num:
-                doc_sources_map[doc_id].add(page_num)
-            else:
-                doc_sources_map[doc_id] = None
-            
-            summarize_tasks.append(self._load_and_summarize_doc(doc_id, question))
-    
-        # Run all LLM summaries concurrently
-        doc_summaries = await asyncio.gather(*summarize_tasks)
-        return doc_summaries, doc_types, doc_sources_map
-    
-    
-    async def _load_and_summarize_doc(self, doc_id, question):
-        # Loads and summarizes a single document.
-        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
-        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-            doc_text = await f.read()
-        
-        question = f'Summarize all the relevant information and facts needed to answer the following question from the text below:\n\n{question}'
-        prompt = question + '\n\n' + doc_text
-        summary = await RAGService.llm_service.query(prompt, question)
-        return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
-    
-    
-    def _build_prompt(self, question, doc_summaries, doc_types, thinking_model=True, allow_mongo_db_query=True):
-        """Construct the final prompt for the LLM."""
-        prompt = f"{question}\n\nUse the following texts to briefly and precisely answer the previous question in a concise manner:\n"
-        for doc_summary in doc_summaries:
-            prompt += '\n\n' + doc_summary
-    
-        # Attach MongoDB schema information
-        if allow_mongo_db_query:
-            prompt += '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
-        
-            for doc_type in doc_types:
-                prompt += f'\n\Doc_type {doc_type}: {json.dumps(self.doc_schemata[doc_type])}'
-            
-            prompt += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
-            if thinking_model:
-                prompt += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
-            
-        return prompt
-    
-    
-    def _generate_source_references_str(self, doc_sources_map):
-        """Generate the source references string."""
-        sources_info = 'Consult these documents for more detail:\n'
-        for doc_id, pages in doc_sources_map.items():
-            try:
-                doc_pseudo_path = self.json_db.find_one({ '_id': doc_id }).get('path')
-            finally:
-                doc_pseudo_path = f"Document with ID {doc_id}"
-                
-            sources_info += doc_pseudo_path
-            if pages is None:
-                sources_info += '\n'
-            else:
-                sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
-        return sources_info
-        
 
+    
     def _merge_with_base_schema(self, json_schema):
         return {
             "type": "object",
@@ -581,6 +436,16 @@ class RAGService:
             "required": list(set(BASE_DOC_SCHEMA["required"] + json_schema.get("required", [])))
         }
 
+
+rag_service_cache = {}
+def get_company_rag_service(company_id):
+    rag_service = rag_service_cache.get(company_id)
+    if rag_service:
+        return rag_service
+    
+    rag_service = RAGService(company_id)
+    rag_service_cache[company_id] = rag_service
+    return rag_service
 
 # company = 'MyCompany'
 # rag = RAGService(company)
