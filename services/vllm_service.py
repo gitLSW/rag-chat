@@ -192,7 +192,7 @@ class LLMService:
 
         for i, start in enumerate(range(0, len(token_ids), chunk_size)):
             end = min(start + chunk_size, len(token_ids))
-            if i != 0 and question:
+            if i != 0 and question: # Prepend the core user question to each chunk, except the first (where the question is already in the prompt)
                 chunk = question_ids + token_ids[start:end]
             else:
                 chunk = token_ids[start:end]
