@@ -111,6 +111,7 @@ class LLMService:
         self,
         prompt: str,
         question: str = None,
+        req_id: str,
         sampling_params: SamplingParams = None,
         stream: bool = False
     ) -> Union[str, AsyncGenerator[str, None]]:
@@ -131,6 +132,7 @@ class LLMService:
             async for output in self.llm.generate(
                 prompt_token_ids=token_chunks[0],
                 sampling_params=sampling_params,
+                req_id=req_id,
                 stream=True
             ):
                 yield output.outputs[0].text
@@ -139,7 +141,7 @@ class LLMService:
         elif stream:
             # Concurrent, per-chunk generation — full text only
             tasks = [
-                asyncio.create_task(self._process_chunk(chunk, sampling_params))
+                asyncio.create_task(self._process_chunk(chunk, sampling_params, req_id))
                 for chunk in token_chunks
             ]
             for task in tasks:
@@ -149,7 +151,7 @@ class LLMService:
         else:
             # Non-streaming, batched generation
             outputs = await asyncio.gather(*[
-                self._process_chunk(chunk, sampling_params)
+                self._process_chunk(chunk, sampling_params, req_id)
                 for chunk in token_chunks
             ])
             return "\n\n".join(outputs)
@@ -158,13 +160,15 @@ class LLMService:
     async def _process_chunk(
         self,
         chunk_token_ids: List[int],
-        sampling_params: SamplingParams
+        sampling_params: SamplingParams,
+        req_id: str,
     ) -> str:
         output = await asyncio.to_thread(
             self.llm.generate,
             None,
             sampling_params,
             chunk_token_ids,
+            req_id=req_id,
             stream=False
         )
         return output.outputs[0].text
@@ -198,3 +202,6 @@ class LLMService:
                 break
         return chunks
 
+
+    async def cancel(self, req_id: str):
+        await self.llm.abort(req_id)
