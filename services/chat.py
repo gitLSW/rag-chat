@@ -62,6 +62,7 @@ class Chat:
             if not entry['completed']:
                 self._partial_answer = ""  # Reset if not completed
 
+
     async def _execute_generation(self, prompt: str, entry: Dict):
         """Run generation and put results into queue"""
         try:
