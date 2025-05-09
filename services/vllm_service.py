@@ -107,8 +107,7 @@ class RequestState:
 
 
 class LLMService:
-    def __init__(self, session_id):
-        self.session_id = session_id
+    def __init__(self):
         self._ongoing_requests: Dict[str, RequestState] = {}
 
     async def query(
