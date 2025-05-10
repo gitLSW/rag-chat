@@ -5,7 +5,7 @@ import aiofiles
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import AsyncGenerator, List, Optional, Dict
+from typing import AsyncGenerator, List, Optional, Dict, Set
 from ..get_env_var import get_env_var
 from vllm_service import LLMService
 from rag_service import get_company_rag_service
@@ -31,9 +31,14 @@ class Chat:
         self.rag_service = get_company_rag_service(company_id)
         self.mongo_db_connector = None
         
+        self._db_query_task: Optional[asyncio.Task] = None
+        self._db_query_req_id: Optional[str] = None
+
+        self._summarize_doc_task: Optional[asyncio.Task] = None
+        self._summarize_doc_req_ids: Optional[Set[str]] = set()
+        
         self._generation_task: Optional[asyncio.Task] = None
-        self._current_stream_queue: Optional[asyncio.Queue] = None
-        self._current_req_id: Optional[str] = None
+        self._generation_req_id: Optional[str] = None
 
 
     async def query(self,
@@ -58,9 +63,14 @@ class Chat:
                             MongoDB response: {json.dumps(db_response, indent=2)}"""
         elif search_depth:
             docs_data = self.rag_service.find_docs(message, search_depth)
-            doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, message)
+            doc_summaries, _, doc_sources_map = self.summarize_docs(docs_data, message)
             doc_summary_context = "\n\n".join(doc_summaries)
             prompt += f'These texts might be relevant to the previous message:'
+
+        # Build final prompt with optional chat history
+        history = None
+        if show_chat_history:
+            history = self._get_chat_history()
 
         # Create new chat entry
         entry = ChatEntry(
@@ -72,42 +82,37 @@ class Chat:
         )
         self.history.append(entry)
 
-        # Build final prompt with optional chat history
-        history = None
-        if show_chat_history:
-            history = self._get_chat_history()
-
         # Stream queue for chunk communication
-        self._current_stream_queue = asyncio.Queue()
+        _current_stream_queue = asyncio.Queue()
 
         # Kick off the streaming generation
         async def run():
             try:
-                self._current_req_id = f'{self.company_id}-{self.session_id}'
+                self._generation_req_id = f'{self.company_id}-{self.session_id}'
                 stream = self.llm_service.query(
                     prompt=prompt,
                     context=doc_summary_context,
                     history=history,
-                    req_id=self._current_req_id
+                    req_id=self._generation_req_id
                 )
 
                 entry.answer_timestamp = datetime.now()
                 async for chunk in stream:
-                    await self._current_stream_queue.put(chunk)
+                    await _current_stream_queue.put(chunk)
                     entry.answer += chunk
                 entry.completed = True
             except asyncio.CancelledError:
                 # If manually stopped
-                self.llm_service.cancel(self._current_req_id)
+                self.llm_service.cancel(self._generation_req_id)
             finally:
-                await self._current_stream_queue.put(None)
+                await _current_stream_queue.put(None)
 
         self._generation_task = asyncio.create_task(run())
 
         # Yield chunks from the queue
         try:
             while True:
-                chunk = await self._current_stream_queue.get()
+                chunk = await _current_stream_queue.get()
                 if chunk is None:
                     break
                 yield chunk
@@ -118,37 +123,18 @@ class Chat:
             # Cleanup after generation ends
             self._generation_task = None
             self._current_stream_queue = None
-            self._current_req_id = None
+            self._generation_req_id = None
 
 
     def stop(self):
         """Stop the current generation safely without affecting other chats."""
         if self._generation_task and not self._generation_task.done():
             self._generation_task.cancel()
-        if self._current_req_id:
-            self.llm_service.cancel(self._current_req_id)
+        if self._generation_req_id:
+            self.llm_service.cancel(self._generation_req_id)
 
         self._generation_task = None
-        self._current_req_id = None
-
-
-    async def resume(self) -> AsyncGenerator[str, None]:
-        """Resume from the last prompt and partial answer."""
-        if not self.history or not self.history[-1].answer:
-            raise ValueError("No interrupted generation to resume from.")
-
-        last_entry = self.history[-1]
-
-        resume_prompt = self._build_history_prompt(
-            prompt=last_entry.prompt,
-            show_chat_history=True
-        ) + last_entry.answer
-
-        return self.query(
-            prompt=resume_prompt,
-            question="[CONTINUE]",
-            show_chat_history=False
-        )
+        self._generation_req_id = None
 
 
     def _get_chat_history(self):
@@ -161,7 +147,7 @@ class Chat:
         return "\n\n".join(history_parts)
 
 
-    async def _summarize_docs(self, docs_data, message):
+    async def summarize_docs(self, docs_data, message):
         """Process documents concurrently to generate summaries and collect metadata."""
         doc_types = set()
         doc_sources_map = defaultdict(set)
@@ -198,7 +184,7 @@ class Chat:
         req_id = f"{self.company_id}-{self.session_id}-doc-{doc_id}"
 
         try:
-            async for output in Chat.llm_service.query(message, doc_text, process_chunks_concurrently=True, req_id=req_id):
+            async for output in Chat.llm_service.query(message, doc_text, req_id=req_id):
                 summary += output
         except asyncio.CancelledError:
             Chat.llm_service.cancel(req_id)
@@ -235,7 +221,7 @@ class Chat:
             context += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
         
         req_id = f"{self.company_id}-{self.session_id}-mongo"
-
+        
         answer_buffer = ''
         mongo_query = None
         try:
