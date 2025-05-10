@@ -15,9 +15,15 @@ from mongo_db_connector import MongoDBConnector
 class ChatEntry:
     message: str
     timestamp: datetime
-    answer: str
-    answer_timestamp: Optional[datetime]
-    completed: bool
+
+    use_db: Optional[bool]= None
+    search_depth: Optional[int]= None
+    show_chat_history: Optional[bool]= None
+    is_reasoning_model: bool = False
+    
+    answer: str = ''
+    answer_timestamp: Optional[datetime] = None
+    completed: bool = False
 
 
 class Chat:
@@ -31,109 +37,125 @@ class Chat:
         self.rag_service = get_company_rag_service(company_id)
         self.mongo_db_connector = None
         
-        self._db_query_task: Optional[asyncio.Task] = None
         self._db_query_req_id: Optional[str] = None
-
-        self._summarize_doc_task: Optional[asyncio.Task] = None
-        self._summarize_doc_req_ids: Optional[Set[str]] = set()
-        
-        self._generation_task: Optional[asyncio.Task] = None
+        self._summarize_doc_req_ids: Optional[Dict[str, str]] = {}
         self._generation_req_id: Optional[str] = None
 
 
     async def query(self,
                     message,
-                    search_depth = None,
                     use_db = False,
+                    search_depth = None,
                     show_chat_history = False,
-                    is_reasoning_model = False) -> AsyncGenerator[str, None]:
-        # Cancel any existing generation first
-        self.stop()
-
+                    is_reasoning_model = False,
+                    resuming = False) -> AsyncGenerator[str, None]:
         if search_depth and use_db:
             raise ValueError('Either search_depth or use_db are allowed, not both.')
 
-        prompt = message
-        doc_summary_context = None
-        if use_db:
-            db_query, db_response = self.llm_db_query(message, doc_summaries, is_reasoning_model)
-            if db_response:
-                prompt += f"""This MongoDB query and response might be relevant to the previous message:\n
-                            MongoDB query: {json.dumps(db_query, indent=2)}\n\n
-                            MongoDB response: {json.dumps(db_response, indent=2)}"""
-        elif search_depth:
-            docs_data = self.rag_service.find_docs(message, search_depth)
-            doc_summaries, _, doc_sources_map = self.summarize_docs(docs_data, message)
-            doc_summary_context = "\n\n".join(doc_summaries)
-            prompt += f'These texts might be relevant to the previous message:'
+        # Create new chat entry
+        if resuming:
+            self.pause()
+            entry = self.history[-1]
+        else:
+            self.abort() # Stops the automatic resume of _llm_db_query and _summarize_docs
+            entry = ChatEntry(
+                message=message,
+                timestamp=datetime.now(),
+                use_db=use_db,
+                search_depth=search_depth,
+                show_chat_history=show_chat_history,
+                is_reasoning_model=is_reasoning_model
+            )
+            self.history.append(entry)
 
         # Build final prompt with optional chat history
         history = None
         if show_chat_history:
             history = self._get_chat_history()
 
-        # Create new chat entry
-        entry = ChatEntry(
-            message=message,
-            timestamp=datetime.now(),
-            answer='',
-            answer_timestamp=None,
-            completed=False
-        )
-        self.history.append(entry)
+        prompt = message
+        doc_summary_context = None
+        req_id = self._generation_req_id
 
-        # Stream queue for chunk communication
-        _current_stream_queue = asyncio.Queue()
+        if req_id: # If a final generation task is still able to be resumed, we don't need to repeat its preprocessing
+            generator = self.llm_service.resume(req_id)
+        else:
+            if use_db:
+                db_query, db_response = self._llm_db_query(message, is_reasoning_model)
+                if db_response:
+                    prompt += f"""This MongoDB query and response might be relevant to the previous message:\n
+                                MongoDB query: {json.dumps(db_query, indent=2)}\n\n
+                                MongoDB response: {json.dumps(db_response, indent=2)}"""
+            elif search_depth:
+                docs_data = self.rag_service.find_docs(message, search_depth)
+                doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, message)
+                doc_summary_context = "\n\n".join(doc_summaries)
+                prompt += f'These texts might be relevant to the previous message:'
 
-        # Kick off the streaming generation
-        async def run():
-            try:
-                self._generation_req_id = f'{self.company_id}-{self.session_id}'
-                stream = self.llm_service.query(
-                    prompt=prompt,
-                    context=doc_summary_context,
-                    history=history,
-                    req_id=self._generation_req_id
-                )
+            req_id = f"{self.company_id}-{self.session_id}-final-answer"
+            entry.answer_timestamp = datetime.now()
+            generator = self.llm_service.query(
+                prompt=prompt,
+                context=doc_summary_context,
+                history=history,
+                req_id=req_id
+            )
+            self._generation_req_id = req_id
 
-                entry.answer_timestamp = datetime.now()
-                async for chunk in stream:
-                    await _current_stream_queue.put(chunk)
-                    entry.answer += chunk
-                entry.completed = True
-            except asyncio.CancelledError:
-                # If manually stopped
-                self.llm_service.cancel(self._generation_req_id)
-            finally:
-                await _current_stream_queue.put(None)
-
-        self._generation_task = asyncio.create_task(run())
-
-        # Yield chunks from the queue
         try:
-            while True:
-                chunk = await _current_stream_queue.get()
-                if chunk is None:
-                    break
+            async for chunk in generator:
+                entry.answer += chunk
                 yield chunk
+        except asyncio.CancelledError:
+            raise asyncio.CancelledError('Final generation request cancelled')
 
-            if doc_sources_map:
-                yield self._generate_source_references_str(doc_sources_map)
-        finally:
-            # Cleanup after generation ends
-            self._generation_task = None
-            self._current_stream_queue = None
-            self._generation_req_id = None
+        if doc_sources_map:
+            yield self._generate_source_references_str(doc_sources_map)
+
+        entry.completed = True
+        self.abort()
 
 
-    def stop(self):
+    async def resume(self):
+        entry = self.history[-1]
+        if not entry:
+            return
+        
+        async for chunk in self.query(entry.message,
+                                      entry.use_db,
+                                      entry.search_depth,
+                                      entry.show_chat_history,
+                                      entry.is_reasoning_model,
+                                      True):
+            entry.answer += chunk
+            yield chunk
+        
+
+
+    def pause(self):
         """Stop the current generation safely without affecting other chats."""
-        if self._generation_task and not self._generation_task.done():
-            self._generation_task.cancel()
-        if self._generation_req_id:
-            self.llm_service.cancel(self._generation_req_id)
+        if self._db_query_req_id:
+            self.llm_service.pause(self._db_query_req_id)
 
-        self._generation_task = None
+        if self._summarize_doc_req_ids:
+            self.llm_service.pause(self._summarize_doc_req_ids)
+
+        if self._generation_req_id:
+            self.llm_service.pause(self._generation_req_id)
+
+
+    def abort(self):
+        if self._db_query_req_id:
+            self.llm_service.abort(self._db_query_req_id)
+
+        if self._summarize_doc_req_ids:
+            self.llm_service.abort(self._summarize_doc_req_ids)
+
+        if self._generation_req_id:
+            self.llm_service.abort(self._generation_req_id)
+
+        self._db_query_req_id = None
+        self._summarize_doc_req_ids = {}
         self._generation_req_id = None
 
 
@@ -147,8 +169,22 @@ class Chat:
         return "\n\n".join(history_parts)
 
 
-    async def summarize_docs(self, docs_data, message):
+    # -----------------------------
+    # Summarize Docs
+    # -----------------------------
+
+    async def _summarize_docs(self, docs_data, message):
         """Process documents concurrently to generate summaries and collect metadata."""
+        async def _resume_doc_summary(generator):
+            summary = ''
+            try:
+                async for output in generator:
+                    summary += output
+            except asyncio.CancelledError:
+                raise asyncio.CancelledError('Summarize request cancelled')
+
+            return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
+
         doc_types = set()
         doc_sources_map = defaultdict(set)
         summarize_tasks = []
@@ -165,33 +201,89 @@ class Chat:
             else:
                 doc_sources_map[doc_id] = None
             
-            summarize_tasks.append(self._load_and_summarize_doc(doc_id, message))
+            req_id = self._summarize_doc_req_ids.get(doc_id)
+            if req_id:
+                generator = self.llm_service.resume(req_id)
+                summarize_tasks.append(_resume_doc_summary(generator))
+            else:
+                async def _load_and_summarize_doc(doc_id, message):
+                    # Loads and summarizes a single document.
+                    txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
+                    async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+                        doc_text = await f.read()
+
+                    message = f'Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}'
+                    
+                    req_id = f"{self.company_id}-{self.session_id}-doc-{doc_id}"
+                    generator = Chat.llm_service.query(message, doc_text, req_id=req_id)
+                    self._summarize_doc_req_ids[doc_id] = req_id
+
+                    return await _resume_doc_summary(generator)
+                summarize_tasks.append(_load_and_summarize_doc(doc_id, message))
     
         # Run all LLM summaries concurrently
         doc_summaries = await asyncio.gather(*summarize_tasks)
+        self._summarize_doc_req_ids = {}
         return doc_summaries, doc_types, doc_sources_map
     
     
-    async def _load_and_summarize_doc(self, doc_id, message):
-        # Loads and summarizes a single document.
-        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
-        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-            doc_text = await f.read()
-
-        message = f'Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}'
-        
-        summary = ''
-        req_id = f"{self.company_id}-{self.session_id}-doc-{doc_id}"
-
-        try:
-            async for output in Chat.llm_service.query(message, doc_text, req_id=req_id):
-                summary += output
-        except asyncio.CancelledError:
-            Chat.llm_service.cancel(req_id)
-
-        return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
-
+    # -----------------------------
+    # LLM DB Query
+    # -----------------------------
     
+    async def _llm_db_query(self, message, is_reasoning_model=True):
+        async def _resume_db_query(generator):
+            answer_buffer = ''
+            mongo_query = None
+            try:
+                async for chunk in generator:
+                    answer_buffer += chunk
+
+                    if chunk.contains('`'):
+                        # Check for complete mongo_json block
+                        mongo_match = re.search(r"mongo_json\s*(.*?)\s*", answer_buffer, re.DOTALL)
+                        if mongo_match:
+                            mongo_query = mongo_match.group(1)
+                            break  # Stop the first generation
+            except asyncio.CancelledError:
+                raise asyncio.CancelledError('DB request cancelled')
+
+            # If we found a mongo query, execute it and return it
+            if mongo_query:
+                # Init MongoDBConnector
+                if not self.mongo_db_connector:
+                    self.mongo_db_connector = MongoDBConnector(self.company_id)
+
+                # Execute MongoDB query
+                return self.mongo_db_connector.run(mongo_query, self.user_access_role)
+
+            return None, None
+        
+        req_id = self._db_query_req_id
+        if req_id:
+            generator = self.llm_service.resume(req_id)
+            return await _resume_db_query(generator)
+
+        # Attach MongoDB schema information
+        context += '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
+    
+        for doc_type, doc_schema in self.rag_service.doc_schemata:
+            context += f'\n\Doc_type {doc_type}: {json.dumps(doc_schema)}'
+        
+        context += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
+        if is_reasoning_model:
+            context += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
+        
+        req_id = f"{self.company_id}-{self.session_id}-mongo"
+        generator = self.llm_service.query(message, context, allow_chunking=False, req_id=req_id)
+        self._db_query_req_id = req_id
+        return await _resume_db_query(generator)
+    
+    
+    # -----------------------------
+    # Utils
+    # -----------------------------
+
     def _generate_source_references_str(self, doc_sources_map):
         """Generate the source references string."""
         sources_info = 'Consult these documents for more detail:\n'
@@ -207,43 +299,3 @@ class Chat:
             else:
                 sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
         return sources_info
-    
-    
-    async def llm_db_query(self, message, is_reasoning_model=True):
-        # Attach MongoDB schema information
-        context += '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
-    
-        for doc_type, doc_schema in self.rag_service.doc_schemata:
-            context += f'\n\Doc_type {doc_type}: {json.dumps(doc_schema)}'
-        
-        context += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
-        if is_reasoning_model:
-            context += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
-        
-        req_id = f"{self.company_id}-{self.session_id}-mongo"
-        
-        answer_buffer = ''
-        mongo_query = None
-        try:
-            async for chunk in self.llm_service.query(message, context, allow_chunking=False, req_id=req_id):
-                answer_buffer += chunk
-
-                if chunk.contains('`'):
-                    # Check for complete mongo_json block
-                    mongo_match = re.search(r"mongo_json\s*(.*?)\s*", answer_buffer, re.DOTALL)
-                    if mongo_match:
-                        mongo_query = mongo_match.group(1)
-                        break  # Stop the first generation
-        except asyncio.CancelledError:
-            self.llm_service.cancel(req_id)
-
-        # If we found a mongo query, execute it and return it
-        if mongo_query:
-            # Init MongoDBConnector
-            if not self.mongo_db_connector:
-                self.mongo_db_connector = MongoDBConnector(self.company_id)
-
-            # Execute MongoDB query
-            return self.mongo_db_connector.run(mongo_query, self.user_access_role)
-
-        return None, None

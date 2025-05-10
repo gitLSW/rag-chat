@@ -162,15 +162,24 @@ class LLMService:
             await queues[chunk_index].put(None)  # Signal that the stream is done
 
 
-    def cancel(self, req_id):
+    def pause(self, req_id):
         """
-        Cancel an ongoing request by its request ID.
+        Pause an ongoing request by its request ID.
         """
         try:
             llm.abort(req_id)
         except Exception as e:
             # Log or handle specific errors as needed
-            raise RuntimeError(f"Failed to cancel request {req_id}: {str(e)}")
+            # raise RuntimeError(f"Failed to cancel request {req_id}: {str(e)}")
+            pass
+        
+
+    def abort(self, req_id):
+        """
+        Cancel an ongoing request by its request ID.
+        """
+        self.pause(req_id)
+        del self._ongoing_requests[req_id]
         
 
     async def resume(self, req_id):
