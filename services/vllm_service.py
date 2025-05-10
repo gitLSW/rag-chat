@@ -109,7 +109,7 @@ class RequestState:
 class LLMService:
 
     def __init__(self):
-        self._ongoing_requests: Dict[str, RequestState] = {}
+        self._current_requests: Dict[str, RequestState] = {}
 
 
     async def query(
@@ -126,7 +126,7 @@ class LLMService:
 
         chunks = self._get_chunks(prompt, context, history, allow_chunking)
         
-        self._ongoing_requests[req_id] = RequestState(sampling_params)
+        self._current_requests[req_id] = RequestState(sampling_params)
 
         # Concurrent generation and sequential yielding
         queues: List[asyncio.Queue] = [asyncio.Queue() for _ in chunks]
@@ -144,7 +144,7 @@ class LLMService:
 
         # Ensure all tasks are completed
         await asyncio.gather(*tasks)
-        del self._ongoing_requests[req_id]
+        del self._current_requests[req_id]
 
 
     async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params):
@@ -156,7 +156,7 @@ class LLMService:
                 request_id=chunk_req_id,
                 stream=True
             ):
-                self._ongoing_requests[req_id].chunk_states[chunk_req_id].append(output.outputs[0].token_ids)
+                self._current_requests[req_id].chunk_states[chunk_req_id].append(output.outputs[0].token_ids)
                 await queues[chunk_index].put(output.outputs[0].text)
         finally:
             await queues[chunk_index].put(None)  # Signal that the stream is done
@@ -176,14 +176,15 @@ class LLMService:
 
     def abort(self, req_id):
         """
-        Cancel an ongoing request by its request ID.
+        End an ongoing request by its request ID.
         """
         self.pause(req_id)
-        del self._ongoing_requests[req_id]
+        if req_id in self._current_requests.keys():
+            del self._current_requests[req_id]
         
 
     async def resume(self, req_id):
-        req_state = self._ongoing_requests.get(req_id)
+        req_state = self._current_requests.get(req_id)
         if not req_state:
             raise ValueError('No request found for ' + req_id)
         
@@ -206,7 +207,7 @@ class LLMService:
 
         # Ensure all tasks are completed
         await asyncio.gather(*tasks)
-        del self._ongoing_requests[req_id]
+        del self._current_requests[req_id]
         
 
     def _get_chunks(self, prompt, context, history, allow_chunking):
@@ -247,6 +248,6 @@ class LLMService:
                 chunks.append(chunk_ids)
 
         if not chunks:
-            chunks.append([prompt_ids])
+            chunks.append(prompt_ids)
 
         return chunks

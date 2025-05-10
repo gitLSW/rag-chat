@@ -82,7 +82,7 @@ class Chat:
             generator = self.llm_service.resume(req_id)
         else:
             if use_db:
-                db_query, db_response = await ._llm_db_query(message, is_reasoning_model)
+                db_query, db_response = await self._llm_db_query(message, is_reasoning_model)
                 if db_response:
                     prompt += f"""This MongoDB query and response might be relevant to the previous message:\n
                                 MongoDB query: {json.dumps(db_query, indent=2)}\n\n
@@ -138,7 +138,8 @@ class Chat:
             self.llm_service.pause(self._db_query_req_id)
 
         if self._summarize_doc_req_ids:
-            self.llm_service.pause(self._summarize_doc_req_ids)
+            for summarize_doc_req_id in self._summarize_doc_req_ids.values():
+                self.llm_service.pause(summarize_doc_req_id)
 
         if self._generation_req_id:
             self.llm_service.pause(self._generation_req_id)
@@ -149,7 +150,8 @@ class Chat:
             self.llm_service.abort(self._db_query_req_id)
 
         if self._summarize_doc_req_ids:
-            self.llm_service.abort(self._summarize_doc_req_ids)
+            for summarize_doc_req_id in self._summarize_doc_req_ids.values():
+                self.llm_service.abort(summarize_doc_req_id)
 
         if self._generation_req_id:
             self.llm_service.abort(self._generation_req_id)
@@ -242,7 +244,7 @@ class Chat:
                 async for chunk in generator:
                     answer_buffer += chunk
 
-                    if chunk.contains('`'):
+                    if '`' in chunk:
                         # Check for complete mongo_json block
                         mongo_match = re.search(r"mongo_json\s*(.*?)\s*", answer_buffer, re.DOTALL)
                         if mongo_match:
@@ -271,7 +273,7 @@ class Chat:
         context = '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
     
         for doc_type, doc_schema in self.rag_service.doc_schemata:
-            context += f'\n\Doc_type {doc_type}: {json.dumps(doc_schema)}'
+            context += f'\n\nDoc_type {doc_type}: {json.dumps(doc_schema)}'
         
         context += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
         if is_reasoning_model:
@@ -292,7 +294,8 @@ class Chat:
         sources_info = 'Consult these documents for more detail:\n'
         for doc_id, pages in doc_sources_map.items():
             try:
-                doc_pseudo_path = self.rag_service.json_db.find_one({ '_id': doc_id }).get('path')
+                doc = self.rag_service.json_db.find_one({ '_id': doc_id })
+                doc_pseudo_path = doc.get('path')
             except Exception:
                 doc_pseudo_path = f"Document with ID {doc_id}"
                 
