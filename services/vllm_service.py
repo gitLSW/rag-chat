@@ -156,7 +156,8 @@ class LLMService:
                 request_id=chunk_req_id,
                 stream=True
             ):
-                self._current_requests[req_id].chunk_states[chunk_req_id].append(output.outputs[0].token_ids)
+                if self._current_requests.get(req_id): # In case it was aborted
+                    self._current_requests[req_id].chunk_states[chunk_req_id].append(output.outputs[0].token_ids)
                 await queues[chunk_index].put(output.outputs[0].text)
         finally:
             await queues[chunk_index].put(None)  # Signal that the stream is done
@@ -168,19 +169,21 @@ class LLMService:
         """
         try:
             llm.abort(req_id)
+            return True
         except Exception as e:
             # Log or handle specific errors as needed
             # raise RuntimeError(f"Failed to cancel request {req_id}: {str(e)}")
-            pass
+            return False
         
 
     def abort(self, req_id):
         """
         End an ongoing request by its request ID.
         """
-        self.pause(req_id)
-        if req_id in self._current_requests.keys():
+        success = self.pause(req_id)
+        if success and req_id in self._current_requests.keys():
             del self._current_requests[req_id]
+        return success
         
 
     async def resume(self, req_id):

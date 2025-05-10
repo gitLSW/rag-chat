@@ -38,7 +38,7 @@ class Chat:
         self.mongo_db_connector = None
         
         self._db_query_req_id: Optional[str] = None
-        self._summarize_doc_req_ids: Optional[Dict[str, str]] = {}
+        self._summarize_doc_req_ids: Optional[Dict[str, str]] = {} # [doc_id: doc_req_id]
         self._generation_req_id: Optional[str] = None
 
 
@@ -102,6 +102,10 @@ class Chat:
                 req_id=req_id
             )
             self._generation_req_id = req_id
+
+        # Now we can safely remove the preprocessing tasks, because they completed and we started and saved the final generation
+        self._db_query_req_id = None
+        self._summarize_doc_req_ids = {}
 
         try:
             async for chunk in generator:
@@ -228,7 +232,6 @@ class Chat:
     
         # Run all LLM summaries concurrently
         doc_summaries = await asyncio.gather(*summarize_tasks)
-        self._summarize_doc_req_ids = {}
         return doc_summaries, doc_types, doc_sources_map
     
     
