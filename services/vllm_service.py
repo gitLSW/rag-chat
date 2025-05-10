@@ -144,12 +144,14 @@ class LLMService:
 
         # Ensure all tasks are completed
         await asyncio.gather(*tasks)
-        del self._current_requests[req_id]
+        if self._current_requests.get(req_id):
+            del self._current_requests[req_id]
 
 
     async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params):
         chunk_req_id = f'{req_id}-chunk{chunk_index}'
         try:
+            self._current_requests[req_id].chunk_states[chunk_req_id].append(chunk)
             async for output in llm.generate(
                 prompt_token_ids=chunk,
                 sampling_params=sampling_params,
