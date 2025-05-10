@@ -75,13 +75,14 @@ class Chat:
 
         prompt = message
         doc_summary_context = None
+        doc_sources_map = None
         req_id = self._generation_req_id
 
         if req_id: # If a final generation task is still able to be resumed, we don't need to repeat its preprocessing
             generator = self.llm_service.resume(req_id)
         else:
             if use_db:
-                db_query, db_response = self._llm_db_query(message, is_reasoning_model)
+                db_query, db_response = await ._llm_db_query(message, is_reasoning_model)
                 if db_response:
                     prompt += f"""This MongoDB query and response might be relevant to the previous message:\n
                                 MongoDB query: {json.dumps(db_query, indent=2)}\n\n
@@ -131,7 +132,6 @@ class Chat:
             yield chunk
         
 
-
     def pause(self):
         """Stop the current generation safely without affecting other chats."""
         if self._db_query_req_id:
@@ -162,7 +162,7 @@ class Chat:
     def _get_chat_history(self):
         history_parts = []
         for entry in self.history:
-            history_parts.append(f"User: {entry.prompt}")
+            history_parts.append(f"User: {entry.message}")
             if entry.answer:
                 history_parts.append(f"Assistant: {entry.answer}")
     
