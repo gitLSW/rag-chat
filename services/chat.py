@@ -209,8 +209,11 @@ class Chat:
                 async def _load_and_summarize_doc(doc_id, message):
                     # Loads and summarizes a single document.
                     txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
-                    async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
-                        doc_text = await f.read()
+                    try:
+                        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+                            doc_text = await f.read()
+                    except FileNotFoundError:
+                        return '' # TODO: Maybe throw exception
 
                     message = f'Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}'
                     
@@ -265,7 +268,7 @@ class Chat:
             return await _resume_db_query(generator)
 
         # Attach MongoDB schema information
-        context += '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
+        context = '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
     
         for doc_type, doc_schema in self.rag_service.doc_schemata:
             context += f'\n\Doc_type {doc_type}: {json.dumps(doc_schema)}'
@@ -290,7 +293,7 @@ class Chat:
         for doc_id, pages in doc_sources_map.items():
             try:
                 doc_pseudo_path = self.rag_service.json_db.find_one({ '_id': doc_id }).get('path')
-            finally:
+            except Exception:
                 doc_pseudo_path = f"Document with ID {doc_id}"
                 
             sources_info += doc_pseudo_path

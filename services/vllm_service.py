@@ -103,7 +103,7 @@ max_tokens = getattr(llm_config, "max_position_embeddings", tokenizer.model_max_
 @dataclass
 class RequestState:
     sampling_params: SamplingParams
-    chunk_state: Dict[str, Deque] = defaultdict(lambda: deque(maxlen=max_tokens)) # [chunk_req_id: chunk_token_ids]
+    chunk_states: Dict[str, Deque] = defaultdict(lambda: deque(maxlen=max_tokens)) # [chunk_req_id: chunk_token_ids]
 
 
 class LLMService:
@@ -117,7 +117,7 @@ class LLMService:
         prompt: str,
         context: Optional[str] = None,
         history: Optional[str] = None,
-        req_id = uuid.uuid4(),
+        req_id = str(uuid.uuid4()),
         sampling_params: Optional[SamplingParams] = None,
         allow_chunking: bool = True
     ) -> AsyncGenerator[str, None]:
@@ -215,12 +215,12 @@ class LLMService:
         context_ids = tokenizer.encode(context, add_special_tokens=False) if context else []
         history_ids = tokenizer.encode(history, add_special_tokens=False) if history else []
 
-        if self.max_tokens < len(prompt_ids):
+        if max_tokens < len(prompt_ids):
             raise ValueError('Prompt is too long for LLM context frame')
 
         # Enforce prompt size <= 1/4 frame
-        quarter_frame = self.max_tokens // 4
-        if self.max_tokens < len(prompt_ids) + len(context_ids): # chunking occurrs
+        quarter_frame = max_tokens // 4
+        if max_tokens < len(prompt_ids) + len(context_ids): # chunking occurrs
             if quarter_frame < len(prompt_ids):
                 raise ValueError('Prompt is too long for LLM context frame')
             
@@ -228,12 +228,12 @@ class LLMService:
                 raise ValueError('Prompt and context are too long and chunking was disallowed')
             
         chunks = []
-        available_per_chunk = self.max_tokens - len(prompt_ids)
+        available_per_chunk = max_tokens - len(prompt_ids)
 
         # Take the last chunk from the chat history and append the prompt
         if history_ids:
             chunk_ids = history_ids[-available_per_chunk:] + prompt_ids
-            if len(chunk_ids) + len(context_ids) < self.max_tokens:
+            if len(chunk_ids) + len(context_ids) < max_tokens:
                 chunks.append(chunk_ids + context_ids)
                 return chunks # Everything fits in one chunk
             chunks.append(chunk_ids)
