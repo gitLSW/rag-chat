@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
+from services.chat_websocket import router as chat_ws_router
 from middleware.auth.token_middleware import TokenMiddleware
 from middleware.auth.api_access_middlware import APIAccessMiddleware
 from middleware.error_handler_middleware import ErrorHandlerMiddleware
@@ -85,6 +86,8 @@ app.add_middleware(
     allowed_ips=API_ALLOWED_IPs,
     exempt_paths={'/chat'}
 )
+
+app.include_router(chat_ws_router) # Add /chat endpoint
 
 
 @app.post("/accessGroups")
@@ -164,27 +167,6 @@ async def delete_doc(doc_id, req):
 async def search_docs(req: SemanticSearchReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.find_docs(req.question, req.search_depth, req.state.user_role)
-
-
-@app.websocket("/chat")
-async def websocket_query(websocket: WebSocket):
-    company_id = websocket.scope["state"].company_id
-    user_role = websocket.scope["state"].user_role
-    rag_service = get_company_rag_service(company_id)
-    
-    while True:
-        # Accept the WebSocket connection
-        await websocket.accept()
-
-        # Receive the chat message payload (should contain question and optional search_depth)
-        data = await websocket.receive_json()
-        question = data.get("question")
-        search_depth = data.get("searchDepth", 10)
-
-        # Stream tokens from the RAG pipeline
-        async for token in rag_service.rag_query(question, search_depth, user_role):
-            await websocket.send_text(token)
-    
 
 
 # main.py
