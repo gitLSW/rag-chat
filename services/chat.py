@@ -53,7 +53,7 @@ class Chat:
             raise ValueError('Either search_depth or use_db are allowed, not both.')
 
         # Create new chat entry
-        if resuming:
+        if resuming and not entry.completed:
             self.pause()
             entry = self.history[-1]
         else:
