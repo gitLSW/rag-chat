@@ -229,6 +229,11 @@ class LLMChat:
     # -----------------------------
     
     async def _llm_db_query(self, message):
+        sampling_params = SamplingParams(
+            temperature=0.1,
+            top_p=0.4
+            # stop=["\n\n", "\n", "Q:", "###"]
+        )
         async def _resume_db_query(generator):
             answer_buffer = ''
             mongo_query = None
@@ -270,7 +275,7 @@ class LLMChat:
         context += '\n\nTry to answer the following message. If you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
         
         req_id = f"{self.user_id}-{self.chat_id}-mongo"
-        generator = self.llm_service.query(message, context, allow_chunking=False, req_id=req_id)
+        generator = self.llm_service.query(message, context, req_id=req_id, sampling_params=sampling_params, allow_chunking=False)
         self._db_query_req_id = req_id
         return await _resume_db_query(generator)
     
