@@ -1,107 +1,114 @@
 import re
 import json
+import uuid
 import asyncio
 import aiofiles
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import AsyncGenerator, List, Optional, Dict, Set
-from ..get_env_var import get_env_var
+from typing import AsyncGenerator, Optional, Dict
+from pymongo import MongoClient
 from vllm_service import LLMService
 from rag_service import get_company_rag_service
 from mongo_db_connector import MongoDBConnector
+from ..get_env_var import get_env_var
 
-@dataclass
+MONGO_DB_URL = get_env_var('MONGO_DB_URL')
+
+
 class ChatEntry:
-    message: str
-    timestamp: datetime
+    def __init__(self, message, use_db=None, rag_search_depth=None, show_chat_history=False, is_reasoning_model=False):
+        self.message = message
+        self.time = datetime.now()
+        self.answer: str = ''
 
-    use_db: Optional[bool]= None
-    search_depth: Optional[int]= None
-    show_chat_history: Optional[bool]= None
-    is_reasoning_model: bool = False
-    
-    answer: str = ''
-    answer_timestamp: Optional[datetime] = None
-    completed: bool = False
+        self.use_db = use_db
+        self.rag_search_depth = rag_search_depth
+        self.show_chat_history = show_chat_history
+        self.is_reasoning_model = is_reasoning_model
 
 
-class Chat:
+class LLMChat:
     llm_service = LLMService()  # Shared static LLM instance across sessions
 
-    def __init__(self, company_id, session_id, user_access_role):
+    def __init__(self, user_id, company_id, user_access_role):
+        self.user_id = user_id
+        self.chat_id = str(uuid.uuid4())
         self.company_id = company_id
-        self.session_id = session_id
-        self.history: List[ChatEntry] = []
         self.user_access_role = user_access_role
-        self.rag_service = get_company_rag_service(company_id)
+
         self.mongo_db_connector = None
+        self.rag_service = get_company_rag_service(company_id)
         
+        self._curr_chat_entry = None
         self._db_query_req_id: Optional[str] = None
         self._summarize_doc_req_ids: Optional[Dict[str, str]] = {} # [doc_id: doc_req_id]
-        self._generation_req_id: Optional[str] = None
+        self._answer_req_id: Optional[str] = None
+
+        # Create or connect to database
+        client = MongoClient(MONGO_DB_URL)
+        self.messages_db = client[company_id]['messages']
 
 
     async def query(self,
                     message,
                     use_db = False,
-                    search_depth = None,
+                    rag_search_depth = None,
                     show_chat_history = False,
-                    is_reasoning_model = False,
-                    resuming = False) -> AsyncGenerator[str, None]:
-        if search_depth and use_db:
-            raise ValueError('Either search_depth or use_db are allowed, not both.')
+                    is_reasoning_model = False) -> AsyncGenerator[str, None]:
+        new_entry = ChatEntry(message, use_db, rag_search_depth, show_chat_history, is_reasoning_model)
 
-        # Create new chat entry
-        if resuming:
-            self.pause()
-            entry = self.history[-1]
-            if not entry or entry.completed:
-                raise ValueError("Nothing to continue")
-        else:
-            self.abort() # Stops the automatic resume of _llm_db_query and _summarize_docs
-            entry = ChatEntry(
-                message=message,
-                timestamp=datetime.now(),
-                use_db=use_db,
-                search_depth=search_depth,
-                show_chat_history=show_chat_history,
-                is_reasoning_model=is_reasoning_model
-            )
-            self.history.append(entry)
+        self.abort()
+        async for chunk in self._generate(new_entry):
+            yield chunk
+
+
+    async def resume(self):
+        if not self._curr_chat_entry:
+            raise ValueError("Nothing to continue")
+        
+        self.pause()
+        async for chunk in self._generate(self._curr_chat_entry):
+            yield chunk
+        
+
+    async def _generate(self, entry) -> AsyncGenerator[str, None]:
+        if entry.rag_search_depth and entry.use_db:
+            raise ValueError('Either rag_search_depth or use_db are allowed, not both.')
+        
+        self._curr_chat_entry = entry
 
         # Build final prompt with optional chat history
-        history = self._get_chat_history() if show_chat_history else None
+        history = self._get_chat_history() if entry.show_chat_history else None
 
-        prompt = message
+        prompt = entry.message
         doc_summary_context = None
         doc_sources_map = None
-        resume_req_id = self._generation_req_id
+        resume_req_id = self._answer_req_id
 
         if resume_req_id: # If a final generation task is still able to be resumed, we don't need to repeat its preprocessing
             generator = self.llm_service.resume(resume_req_id)
         else:
-            if use_db:
-                db_query, db_response = await self._llm_db_query(message, is_reasoning_model)
+            if entry.use_db:
+                db_query, db_response = await self._llm_db_query(entry.message, entry.is_reasoning_model)
                 if db_response:
                     prompt += f"""This MongoDB query and response might be relevant to the previous message:\n
                                 MongoDB query: {json.dumps(db_query, indent=2)}\n\n
                                 MongoDB response: {json.dumps(db_response, indent=2)}"""
-            elif search_depth:
-                docs_data = self.rag_service.find_docs(message, search_depth)
-                doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, message)
+            elif entry.rag_search_depth:
+                docs_data = self.rag_service.find_docs(entry.message, entry.rag_search_depth)
+                doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, entry.message)
                 doc_summary_context = "\n\n".join(doc_summaries)
                 prompt += f'These texts might be relevant to the previous message:'
 
-            resume_req_id = f"{self.company_id}-{self.session_id}-final-answer"
-            entry.answer_timestamp = datetime.now()
+            resume_req_id = f"{self.user_id}-{self.chat_id}-final-answer"
             generator = self.llm_service.query(
                 prompt=prompt,
                 context=doc_summary_context,
                 history=history,
                 req_id=resume_req_id
             )
-            self._generation_req_id = resume_req_id
+            self._answer_req_id = resume_req_id
 
         # Now we can safely remove the preprocessing tasks, because they completed and we started and saved the final generation
         self._db_query_req_id = None
@@ -115,21 +122,19 @@ class Chat:
             raise asyncio.CancelledError('Final generation request cancelled')
 
         if doc_sources_map:
-            yield self._generate_source_references_str(doc_sources_map)
+            source_references_str = self._generate_source_references_str(doc_sources_map)
+            entry.answer += source_references_str
+            yield source_references_str
 
-        entry.completed = True
+        self.messages_db.insert_one({
+            'message': self.message,
+            'time': self.time,
+            'answer': self.answer,
+            'userID': self.user_id,
+            'chatID': self.chat_id
+        })
         self.abort()
 
-
-    async def resume(self):
-        async for chunk in self.query(entry.message,
-                                      entry.use_db,
-                                      entry.search_depth,
-                                      entry.show_chat_history,
-                                      entry.is_reasoning_model,
-                                      True):
-            yield chunk
-        
 
     def pause(self):
         """Stop the current generation safely without affecting other chats."""
@@ -140,8 +145,8 @@ class Chat:
             for summarize_doc_req_id in self._summarize_doc_req_ids.values():
                 self.llm_service.pause(summarize_doc_req_id)
 
-        if self._generation_req_id:
-            self.llm_service.pause(self._generation_req_id)
+        if self._answer_req_id:
+            self.llm_service.pause(self._answer_req_id)
 
 
     def abort(self):
@@ -152,22 +157,13 @@ class Chat:
             for summarize_doc_req_id in self._summarize_doc_req_ids.values():
                 self.llm_service.abort(summarize_doc_req_id)
 
-        if self._generation_req_id:
-            self.llm_service.abort(self._generation_req_id)
+        if self._answer_req_id:
+            self.llm_service.abort(self._answer_req_id)
 
         self._db_query_req_id = None
         self._summarize_doc_req_ids = {}
-        self._generation_req_id = None
-
-
-    def _get_chat_history(self):
-        history_parts = []
-        for entry in self.history:
-            history_parts.append(f"User: {entry.message}")
-            if entry.answer:
-                history_parts.append(f"Assistant: {entry.answer}")
-    
-        return "\n\n".join(history_parts)
+        self._answer_req_id = None
+        self._curr_chat_entry = None
 
 
     # -----------------------------
@@ -218,8 +214,8 @@ class Chat:
 
                     message = f'Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}'
                     
-                    req_id = f"{self.company_id}-{self.session_id}-doc-{doc_id}"
-                    generator = Chat.llm_service.query(message, doc_text, req_id=req_id)
+                    req_id = f"{self.user_id}-{self.chat_id}-doc-{doc_id}"
+                    generator = LLMChat.llm_service.query(message, doc_text, req_id=req_id)
                     self._summarize_doc_req_ids[doc_id] = req_id
 
                     return await _resume_doc_summary(generator)
@@ -277,7 +273,7 @@ class Chat:
         if is_reasoning_model:
             context += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
         
-        req_id = f"{self.company_id}-{self.session_id}-mongo"
+        req_id = f"{self.user_id}-{self.chat_id}-mongo"
         generator = self.llm_service.query(message, context, allow_chunking=False, req_id=req_id)
         self._db_query_req_id = req_id
         return await _resume_db_query(generator)
@@ -287,12 +283,29 @@ class Chat:
     # Utils
     # -----------------------------
 
+    def _get_chat_history(self):
+        history = []
+        for entry in self.get_chat_messages():
+            history.append(f"User: {entry.message}")
+            if entry.answer:
+                history.append(f"You: {entry.answer}")
+    
+        return "\n\n".join(history)
+    
+
+    def get_chat_messages(self):
+        return self.messages_db.find({
+            'chatID': self.chat_id,
+            'userID': self.user_id
+        })
+
+
     def _generate_source_references_str(self, doc_sources_map):
         """Generate the source references string."""
         sources_info = 'Consult these documents for more detail:\n'
         for doc_id, pages in doc_sources_map.items():
             try:
-                doc = self.rag_service.json_db.find_one({ '_id': doc_id })
+                doc = self.rag_service.docs_db.find_one({ '_id': doc_id })
                 doc_pseudo_path = doc.get('path')
             except Exception:
                 doc_pseudo_path = f"Document with ID {doc_id}"

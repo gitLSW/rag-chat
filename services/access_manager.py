@@ -90,8 +90,7 @@ class AccessManager:
 
 
     def has_doc_access(self, doc_id, user_access_role):
-        company_docs_db = self.db_client[self.company_id]['docs']
-        doc = company_docs_db.find_one({ '_id': doc_id })
+        doc = self.db_client[self.company_id]['docs'].find_one({ '_id': doc_id })
         if not doc:
             raise DocumentNotFoundError(doc_id)
         

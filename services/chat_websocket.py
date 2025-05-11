@@ -2,7 +2,7 @@ import asyncio
 from pydantic import BaseModel, ValidationError
 from typing import Optional, Literal, Union
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from chat import Chat
+from services.llm_chat import LLMChat
 
 
 class BaseChatAction(BaseModel):
@@ -16,7 +16,7 @@ class MessageAction(BaseChatAction):
     action: Literal["message"]
     message: str
     use_db: Optional[bool] = False
-    search_depth: Optional[int] = None
+    rag_search_depth: Optional[int] = None
     show_chat_history: Optional[bool] = False
     is_reasoning_model: Optional[bool] = False
     resuming: Optional[bool] = False
@@ -40,7 +40,7 @@ ChatAction = Union[
 
 
 router = APIRouter()
-active_chats: dict[str, Chat] = {}
+active_chats: dict[str, LLMChat] = {}
 
 
 @router.websocket("/chat")
@@ -66,9 +66,9 @@ async def websocket_query(websocket: WebSocket):
                 if action.chat_id in active_chats:
                     await websocket.send_text(f"[ERROR] Chat {action.chat_id} already exists")
                     continue
-                active_chats[action.chat_id] = Chat(
+                active_chats[action.chat_id] = LLMChat(
                     company_id=company_id,
-                    session_id=action.chat_id,
+                    chat_id=action.chat_id,
                     user_access_role=user_role,
                 )
                 await websocket.send_text(f"[STARTED] Chat {action.chat_id}")
@@ -86,7 +86,7 @@ async def websocket_query(websocket: WebSocket):
                     async for chunk in chat.query(
                         message=action.message,
                         use_db=action.use_db,
-                        search_depth=action.search_depth,
+                        rag_search_depth=action.rag_search_depth,
                         show_chat_history=action.show_chat_history,
                         is_reasoning_model=action.is_reasoning_model,
                         resuming=action.resuming,

@@ -83,7 +83,7 @@ class RAGService:
 
         # Create or connect to database
         client = MongoClient(MONGO_DB_URL)
-        self.json_db = client[company_id]['docs']
+        self.docs_db = client[company_id]['docs']
 
 
     def add_json_schema_type(self, doc_type, json_schema, user_access_role):
@@ -112,10 +112,8 @@ class RAGService:
         if user_access_role != 'admin':
             raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
         
-        if self.json_db.find_one({ 'doc_type': doc_type }):
+        if self.docs_db.find_one({ 'doc_type': doc_type }):
             raise HTTPException(409, f'Cannot delete schema "{doc_type}" because it was already used to extract a document.')
-        
-        deleted_schema = self.doc_schemata[doc_type]
         
         lock = FileLock(self.schemata_path)
         with lock:
@@ -175,7 +173,7 @@ class RAGService:
         print(doc_data)
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
-        self.json_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
+        self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
         # In case of override, remove all old embedding entries
         self.vector_db.delete(where={ 'doc_id': doc_id })
@@ -235,7 +233,7 @@ class RAGService:
             updated_doc['path'] = old_doc['path']
         
         jsonschema.validate(updated_doc, doc_schema)
-        self.json_db.replace_one({ '_id': doc_id }, updated_doc)
+        self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
         
         return OKResponse(f'Successfully updated Document {doc_id}', updated_doc)
 
@@ -264,7 +262,7 @@ class RAGService:
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
 
         # Delete from json DB
-        doc_data = self.json_db.delete_one({ '_id': doc_id })
+        doc_data = self.docs_db.delete_one({ '_id': doc_id })
         if not doc_data:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist and thus couldn't be removed.")
 
