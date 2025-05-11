@@ -57,7 +57,7 @@ class Chat:
             self.pause()
             entry = self.history[-1]
             if not entry or entry.completed:
-                raise ValueError("Nothing to continue)
+                raise ValueError("Nothing to continue")
         else:
             self.abort() # Stops the automatic resume of _llm_db_query and _summarize_docs
             entry = ChatEntry(
