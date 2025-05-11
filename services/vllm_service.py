@@ -98,12 +98,12 @@ llm = LLM(
 
 tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
 llm_config = AutoConfig.from_pretrained(LLM_MODEL)
-max_tokens = getattr(llm_config, "max_position_embeddings", tokenizer.model_max_length)
+llm_max_text_len = getattr(llm_config, "max_position_embeddings", tokenizer.model_max_length)
 
 @dataclass
 class RequestState:
     sampling_params: SamplingParams
-    chunk_states: Dict[str, Deque] = defaultdict(lambda: deque(maxlen=max_tokens)) # [chunk_req_id: chunk_token_ids]
+    chunk_states: Dict[str, Deque] = defaultdict(lambda: deque(maxlen=llm_max_text_len)) # [chunk_req_id: chunk_token_ids]
 
 
 class LLMService:
@@ -219,25 +219,25 @@ class LLMService:
         # Tokenize prompt and optional context
         prompt_ids = tokenizer.encode('\n\n' + prompt, add_special_tokens=False)
         
-        if max_tokens < len(prompt_ids):
+        if llm_max_text_len < len(prompt_ids):
             raise ValueError('Prompt is too long for LLM context frame')
         
-        context_ids = (tokenizer.encode(context, add_special_tokens=False) if context else []) +
-                      (tokenizer.encode(history, add_special_tokens=False) if history else [])
+        context_ids = ((tokenizer.encode(history, add_special_tokens=False) if history else []) +
+                       (tokenizer.encode(context, add_special_tokens=False) if context else []))
         
         # Enforce prompt size <= 1/4 frame
-        quarter_frame = max_tokens // 4
-        if max_tokens < len(prompt_ids) + len(context_ids): # chunking occurrs
+        quarter_frame = llm_max_text_len // 4
+        if llm_max_text_len < len(prompt_ids) + len(context_ids): # chunking occurrs
             if quarter_frame < len(prompt_ids):
                 raise ValueError('Prompt is too long for LLM context frame. Allow chunking or disable using chat history or document search')
             
             if not allow_chunking:
                 raise ValueError('Prompt and context are too long and chunking was disallowed')
         else: # Everything fits in one chunk, no chunking needed
-            return [context_ids + prompt_id]
+            return [context_ids + prompt_ids]
             
         chunks = []
-        available_per_chunk = max_tokens - len(prompt_ids)
+        available_per_chunk = llm_max_text_len - len(prompt_ids)
 
         # Build chunks: always include at least the prompt
         if context_ids:
