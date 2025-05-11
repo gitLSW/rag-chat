@@ -330,7 +330,8 @@ class RAGService:
 
         sampling_params = SamplingParams(
             temperature=0.1,
-            top_p=0.4
+            top_p=0.4,
+            max_tokens=256
             # stop=["\n\n", "\n", "Q:", "###"]
         )
 
