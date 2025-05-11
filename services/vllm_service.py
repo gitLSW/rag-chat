@@ -115,7 +115,7 @@ class LLMService:
     async def query(
         self,
         prompt: str,
-        sources: Optional[str] = None,
+        context: Optional[str] = None,
         history: Optional[str] = None,
         req_id = str(uuid.uuid4()),
         sampling_params: Optional[SamplingParams] = None,
@@ -124,7 +124,7 @@ class LLMService:
         if sampling_params is None:
             sampling_params = DEFAULT_SAMPLING_PARAMS
 
-        chunks = self._get_chunks(prompt, sources, history, allow_chunking)
+        chunks = self._get_chunks(prompt, context, history, allow_chunking)
         
         self._current_requests[req_id] = RequestState(sampling_params)
 
@@ -215,16 +215,15 @@ class LLMService:
         del self._current_requests[req_id]
         
 
-    def _get_chunks(self, prompt, sources, history, allow_chunking):
+    def _get_chunks(self, prompt, context, history, allow_chunking):
         # Tokenize prompt and optional context
         prompt_ids = tokenizer.encode('\n\n' + prompt, add_special_tokens=False)
         
         if max_tokens < len(prompt_ids):
             raise ValueError('Prompt is too long for LLM context frame')
         
-        sources_ids = tokenizer.encode(context, add_special_tokens=False) if context else []
-        history_ids = tokenizer.encode(history, add_special_tokens=False) if history else []
-        context_ids = history_ids + sources_ids
+        context_ids = (tokenizer.encode(context, add_special_tokens=False) if context else []) +
+                      (tokenizer.encode(history, add_special_tokens=False) if history else [])
         
         # Enforce prompt size <= 1/4 frame
         quarter_frame = max_tokens // 4
