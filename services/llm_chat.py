@@ -231,7 +231,8 @@ class LLMChat:
     async def _llm_db_query(self, message):
         sampling_params = SamplingParams(
             temperature=0.1,
-            top_p=0.4
+            top_p=0.4,
+            max_tokens=1024
             # stop=["\n\n", "\n", "Q:", "###"]
         )
         async def _resume_db_query(generator):
