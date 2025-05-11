@@ -53,9 +53,11 @@ class Chat:
             raise ValueError('Either search_depth or use_db are allowed, not both.')
 
         # Create new chat entry
-        if resuming and not entry.completed:
+        if resuming:
             self.pause()
             entry = self.history[-1]
+            if not entry or entry.completed:
+                raise ValueError("Nothing to continue)
         else:
             self.abort() # Stops the automatic resume of _llm_db_query and _summarize_docs
             entry = ChatEntry(
@@ -120,10 +122,6 @@ class Chat:
 
 
     async def resume(self):
-        entry = self.history[-1]
-        if not entry:
-            return
-        
         async for chunk in self.query(entry.message,
                                       entry.use_db,
                                       entry.search_depth,
