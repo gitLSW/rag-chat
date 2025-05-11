@@ -1,4 +1,4 @@
-import uuid
+pimport uuid
 import asyncio
 from typing import List, Deque, Dict, AsyncGenerator, Optional
 from ..get_env_var import get_env_var
@@ -115,7 +115,7 @@ class LLMService:
     async def query(
         self,
         prompt: str,
-        context: Optional[str] = None,
+        sources: Optional[str] = None,
         history: Optional[str] = None,
         req_id = str(uuid.uuid4()),
         sampling_params: Optional[SamplingParams] = None,
@@ -124,7 +124,7 @@ class LLMService:
         if sampling_params is None:
             sampling_params = DEFAULT_SAMPLING_PARAMS
 
-        chunks = self._get_chunks(prompt, context, history, allow_chunking)
+        chunks = self._get_chunks(prompt, sources, history, allow_chunking)
         
         self._current_requests[req_id] = RequestState(sampling_params)
 
@@ -215,41 +215,37 @@ class LLMService:
         del self._current_requests[req_id]
         
 
-    def _get_chunks(self, prompt, context, history, allow_chunking):
+    def _get_chunks(self, prompt, sources, history, allow_chunking):
         # Tokenize prompt and optional context
-        prompt_ids = tokenizer.encode('\n\n' + prompt + '\n\n', add_special_tokens=False)
-        context_ids = tokenizer.encode(context, add_special_tokens=False) if context else []
-        history_ids = tokenizer.encode(history, add_special_tokens=False) if history else []
-
+        prompt_ids = tokenizer.encode('\n\n' + prompt, add_special_tokens=False)
+        
         if max_tokens < len(prompt_ids):
             raise ValueError('Prompt is too long for LLM context frame')
-
+        
+        sources_ids = tokenizer.encode(context, add_special_tokens=False) if context else []
+        history_ids = tokenizer.encode(history, add_special_tokens=False) if history else []
+        context_ids = history_ids + sources_ids
+        
         # Enforce prompt size <= 1/4 frame
         quarter_frame = max_tokens // 4
         if max_tokens < len(prompt_ids) + len(context_ids): # chunking occurrs
             if quarter_frame < len(prompt_ids):
-                raise ValueError('Prompt is too long for LLM context frame')
+                raise ValueError('Prompt is too long for LLM context frame. Allow chunking or disable using chat history or document search')
             
             if not allow_chunking:
                 raise ValueError('Prompt and context are too long and chunking was disallowed')
+        else: # Everything fits in one chunk, no chunking needed
+            return [context_ids + prompt_id]
             
         chunks = []
         available_per_chunk = max_tokens - len(prompt_ids)
 
-        # Take the last chunk from the chat history and append the prompt
-        if history_ids:
-            chunk_ids = history_ids[-available_per_chunk:] + prompt_ids
-            if len(chunk_ids) + len(context_ids) < max_tokens:
-                chunks.append(chunk_ids + context_ids)
-                return chunks # Everything fits in one chunk
-            chunks.append(chunk_ids)
-        
         # Build chunks: always include at least the prompt
         if context_ids:
             # Available space per chunk after the prompt
             for start in range(0, len(context_ids), available_per_chunk):
                 end = min(start + available_per_chunk, len(context_ids))
-                chunk_ids = prompt_ids + context_ids[start:end]
+                chunk_ids = context_ids[start:end] + prompt_ids
                 chunks.append(chunk_ids)
 
         if not chunks:
