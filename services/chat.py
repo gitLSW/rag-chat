@@ -128,7 +128,6 @@ class Chat:
                                       entry.show_chat_history,
                                       entry.is_reasoning_model,
                                       True):
-            entry.answer += chunk
             yield chunk
         
 
