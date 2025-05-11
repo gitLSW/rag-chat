@@ -69,17 +69,15 @@ class Chat:
             self.history.append(entry)
 
         # Build final prompt with optional chat history
-        history = None
-        if show_chat_history:
-            history = self._get_chat_history()
+        history = self._get_chat_history() if show_chat_history else None
 
         prompt = message
         doc_summary_context = None
         doc_sources_map = None
-        req_id = self._generation_req_id
+        resume_req_id = self._generation_req_id
 
-        if req_id: # If a final generation task is still able to be resumed, we don't need to repeat its preprocessing
-            generator = self.llm_service.resume(req_id)
+        if resume_req_id: # If a final generation task is still able to be resumed, we don't need to repeat its preprocessing
+            generator = self.llm_service.resume(resume_req_id)
         else:
             if use_db:
                 db_query, db_response = await self._llm_db_query(message, is_reasoning_model)
@@ -93,15 +91,15 @@ class Chat:
                 doc_summary_context = "\n\n".join(doc_summaries)
                 prompt += f'These texts might be relevant to the previous message:'
 
-            req_id = f"{self.company_id}-{self.session_id}-final-answer"
+            resume_req_id = f"{self.company_id}-{self.session_id}-final-answer"
             entry.answer_timestamp = datetime.now()
             generator = self.llm_service.query(
                 prompt=prompt,
                 context=doc_summary_context,
                 history=history,
-                req_id=req_id
+                req_id=resume_req_id
             )
-            self._generation_req_id = req_id
+            self._generation_req_id = resume_req_id
 
         # Now we can safely remove the preprocessing tasks, because they completed and we started and saved the final generation
         self._db_query_req_id = None
