@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 # Load environment variables
 LLM_MODEL = get_env_var('LLM_MODEL')
 IS_PRODUCTION = get_env_var('IS_PRODUCTION')
-DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6)
+DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=4096)
 
 # Initialize the vLLM engine.
 llm = LLM(
