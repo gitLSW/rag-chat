@@ -17,7 +17,7 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 
 class ChatEntry:
-    def __init__(self, message, use_db=None, rag_search_depth=None, show_chat_history=False, is_reasoning_model=False):
+    def __init__(self, message, use_db=None, rag_search_depth=None, show_chat_history=False):
         self.message = message
         self.time = datetime.now()
         self.answer: str = ''
@@ -25,20 +25,19 @@ class ChatEntry:
         self.use_db = use_db
         self.rag_search_depth = rag_search_depth
         self.show_chat_history = show_chat_history
-        self.is_reasoning_model = is_reasoning_model
 
 
 class LLMChat:
-    llm_service = LLMService()  # Shared static LLM instance across sessions
-
+    
     def __init__(self, user_id, company_id, user_access_role):
         self.user_id = user_id
         self.chat_id = str(uuid.uuid4())
         self.company_id = company_id
         self.user_access_role = user_access_role
 
-        self.mongo_db_connector = None
+        self.llm_service = LLMService()
         self.rag_service = get_company_rag_service(company_id)
+        self.mongo_db_connector = None
         
         self._curr_chat_entry = None
         self._db_query_req_id: Optional[str] = None
@@ -54,9 +53,8 @@ class LLMChat:
                     message,
                     use_db = False,
                     rag_search_depth = None,
-                    show_chat_history = False,
-                    is_reasoning_model = False) -> AsyncGenerator[str, None]:
-        new_entry = ChatEntry(message, use_db, rag_search_depth, show_chat_history, is_reasoning_model)
+                    show_chat_history = False) -> AsyncGenerator[str, None]:
+        new_entry = ChatEntry(message, use_db, rag_search_depth, show_chat_history)
 
         self.abort()
         async for chunk in self._generate(new_entry):
@@ -82,7 +80,7 @@ class LLMChat:
         history = self._get_chat_history() if entry.show_chat_history else None
 
         prompt = entry.message
-        doc_summary_context = None
+        doc_sources_summary = None
         doc_sources_map = None
         resume_req_id = self._answer_req_id
 
@@ -90,7 +88,7 @@ class LLMChat:
             generator = self.llm_service.resume(resume_req_id)
         else:
             if entry.use_db:
-                db_query, db_response = await self._llm_db_query(entry.message, entry.is_reasoning_model)
+                db_query, db_response = await self._llm_db_query(entry.message)
                 if db_response:
                     prompt += f"""This MongoDB query and response might be relevant to the previous message:\n
                                 MongoDB query: {json.dumps(db_query, indent=2)}\n\n
@@ -98,13 +96,13 @@ class LLMChat:
             elif entry.rag_search_depth:
                 docs_data = self.rag_service.find_docs(entry.message, entry.rag_search_depth)
                 doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, entry.message)
-                doc_summary_context = "\n\n".join(doc_summaries)
+                doc_sources_summary = "\n\n".join(doc_summaries)
                 prompt += f'These texts might be relevant to the previous message:'
 
             resume_req_id = f"{self.user_id}-{self.chat_id}-final-answer"
             generator = self.llm_service.query(
                 prompt=prompt,
-                context=doc_summary_context,
+                context=doc_sources_summary,
                 history=history,
                 req_id=resume_req_id
             )
@@ -230,7 +228,7 @@ class LLMChat:
     # LLM DB Query
     # -----------------------------
     
-    async def _llm_db_query(self, message, is_reasoning_model=True):
+    async def _llm_db_query(self, message):
         async def _resume_db_query(generator):
             answer_buffer = ''
             mongo_query = None
@@ -269,9 +267,7 @@ class LLMChat:
         for doc_type, doc_schema in self.rag_service.doc_schemata:
             context += f'\n\nDoc_type {doc_type}: {json.dumps(doc_schema)}'
         
-        context += '\n\nIf you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
-        if is_reasoning_model:
-            context += '\nWrite your final mongoDB json command with its tags inside your think tags. Like so: <think> YOUR THOUGHTS ```mongo_json YOUR_QUERY ``` </think>.'
+        context += '\n\nTry to answer the following message. If you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
         
         req_id = f"{self.user_id}-{self.chat_id}-mongo"
         generator = self.llm_service.query(message, context, allow_chunking=False, req_id=req_id)
@@ -286,10 +282,14 @@ class LLMChat:
     def _get_chat_history(self):
         history = []
         for entry in self.get_chat_messages():
-            history.append(f"User: {entry.message}")
-            if entry.answer:
-                history.append(f"You: {entry.answer}")
-    
+            message = entry.get('message')
+            answer = entry.get('answer')
+            if not message or not answer:
+                continue
+                
+            history.append(f"User: {message}")
+            history.append(f"You: {answer}")
+        
         return "\n\n".join(history)
     
 
