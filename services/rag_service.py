@@ -115,6 +115,9 @@ class RAGService:
     
 
     async def create_doc(self, source_path, doc_data, force_ocr, allow_override, user_access_role):
+
+        print('UTVYIUBNO')
+
         doc_id = doc_data.get('id')
         if not doc_id:
             raise HTTPException(400, 'docData must contain an "id"')
@@ -123,27 +126,39 @@ class RAGService:
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
         
+        print('UTVYIUBNO')
+
         # Validate user access
         try:
             self.access_manager.has_doc_access(doc_id, user_access_role)
         except DocumentNotFoundError as e:
             pass # Expeceted behavior
 
+        print('UTVYIUBNO')
+        
         doc_data['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
+
+        print('1')
 
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path, force_ocr)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         
+        print('2')
+
         # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
         if not doc_data.get('path'):
             # Classify Document into a path if non existant
             file_name = source_path.split('/')[-1] # Last element
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + file_name
 
+        print('3')
+
         # Extract JSON
         doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
         
+        print('4')
+
         if doc_schema:
             # Build final schema
             doc_schema = self._merge_with_base_schema(doc_schema)

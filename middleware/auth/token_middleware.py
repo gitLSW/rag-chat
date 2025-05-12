@@ -5,8 +5,12 @@ from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from services.access_manager import get_access_manager
+from get_env_var import get_env_var
 
 # PUBLIC_ROUTES = ["/route"]
+IS_PROD_ENV = get_env_var('IS_PROD_ENV')
+if not IS_PROD_ENV:
+    JWT_PUBLIC_KEY = get_env_var('JWT_PUBLIC_KEY')
 
 security = HTTPBearer()
 
@@ -48,7 +52,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             except JWTError as e2:
                 raise HTTPException(
                     status_code=401,
-                    detail=f"Invalid token after key refresh: {str(e2)}",
+                    detail=f"Invalid token after key refresh: {e2}",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
@@ -77,6 +81,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
 
     def _update_public_key(self):
         """Fetch the public key from remote URL."""
+        if not IS_PROD_ENV:
+            self.public_key = JWT_PUBLIC_KEY
+            self._public_key_last_updated = time.time()
+            return
+
         try:
             response = requests.get(self.public_key_url)
             response.raise_for_status()

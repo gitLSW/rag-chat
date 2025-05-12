@@ -1,12 +1,13 @@
 import os
 import uuid
+import json
 import logging
 from get_env_var import get_env_var
 # from typing import List, Optional
 
 from mimetypes import guess_type
 
-from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket
+from fastapi import FastAPI, Request, Form, HTTPException, File, UploadFile, WebSocket
 from pydantic import BaseModel
 
 from services.rag_service import get_company_rag_service
@@ -49,18 +50,6 @@ class CreateAccessGroupReq(BaseModel):
 class AddDocSchemaReq(BaseModel):
     docType: str
     docSchema: dict # JSON Schema
-
-class CreateDocReq(BaseModel):
-    file: UploadFile = File(...)
-    forceOcr: bool = False
-    allowOverride: bool = True
-    docData: dict # = {
-    #     id: str
-    #     accessGroups: List[str]
-    #     path: Optional[str] = ML classified path
-    #     docType: Optional[str] = ML identified docType
-    #     # more fields according to the doc_type's JSON Schema
-    # }
     
 class UpdateDocReq(BaseModel):
     mergeExisting: bool = False
@@ -83,7 +72,7 @@ app = FastAPI()
 # Add the HTTP middleware
 # error_handler = ErrorHandlerMiddleware(app)
 # app.add_middleware(ErrorHandlingMiddleware, error_handler=error_handler)
-# app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
+app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
 # app.add_middleware(
 #     APIAccessMiddleware,
 #     api_key=API_KEY,
@@ -113,8 +102,31 @@ async def delete_doc_schema(doc_type, req: Request):
 
 
 @app.post("/documents")
-async def create_doc(req: CreateDocReq):
-    mime_type, _ = guess_type(req.file.filename)
+async def create_doc(req: Request,
+                     file: UploadFile = File(...),
+                     forceOcr: bool = Form(False),
+                     allowOverride: bool = Form(True),
+                     docData: str = Form(...)
+                 ):
+    # THIS IS HOW TOE FORM IS SET UP: {
+    #     file: File,
+    #     forceOcr: bool,
+    #     allowOverride: bool,
+    #     docData: {
+    #         id: str
+    #         accessGroups: List[str]
+    #         path: Optional[str] = ML classified path
+    #         docType: Optional[str] = ML identified docType
+    #         # more fields according to the doc_type's JSON Schema
+    #     }
+    # }
+
+    try:
+        docData = json.loads(docData)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid JSON in docData: {str(e)}")
+
+    mime_type, _ = guess_type(file.filename)
 
     # Check if MIME type is supported by DocExtractor
     supported_mime_types = DocExtractor._get_handlers().keys()
@@ -122,19 +134,21 @@ async def create_doc(req: CreateDocReq):
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
 
     # Ensure the directory exists
-    upload_dir = f'{req.state.company_id}/uploads/{uuid.uuid4()}'
+    upload_dir = f'companies/{req.state.company_id}/uploads/{uuid.uuid4()}'
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
-    source_path = f'{upload_dir}/{req.file.filename}'
+    source_path = f'{upload_dir}/{file.filename}'
 
     # Save the file
     with open(source_path, "wb") as buffer:
-        buffer.write(await req.file.read())
+        buffer.write(await file.read())
+
+    print('TEST1')
 
     # Add and process doc
     rag_service = get_company_rag_service(req.state.company_id)
-    res = await rag_service.create_doc(source_path, req.docData, req.forceOcr, req.allowOverride, req.state.user_role)
+    res = await rag_service.create_doc(source_path, docData, forceOcr, allowOverride, req.state.user_role)
 
     if res.status_code == 200:
         os.remove(source_path) # The original file is no longer needed
@@ -167,7 +181,7 @@ async def delete_doc(doc_id, req):
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
-@app.post("/search")
+@app.get("/search")
 async def search_docs(req: SemanticSearchReq):
     rag_service = get_company_rag_service(req.state.company_id)
     return rag_service.find_docs(req.question, req.search_depth, req.state.user_role)

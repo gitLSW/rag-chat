@@ -102,9 +102,12 @@ class LLMDummy:
     async def generate(prompt_token_ids, sampling_params, request_id, stream):
         characters = string.ascii_letters + string.digits + string.punctuation
         while True:
-            chunk = ''.join(random.choice(characters) for _ in range(8))
-            yield chunk
+            if random.random() < 0.1:
+                return
             await asyncio.sleep(random.uniform(0.1, 0.3))
+            chunk = ''.join(random.choice(characters) for _ in range(8))
+            print(chunk)
+            yield chunk
     
     async def abort(req_id):
         pass

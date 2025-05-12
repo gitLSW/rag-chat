@@ -239,7 +239,7 @@ After a user question was received, it gets vectorized into a sentence embedding
 The `searchDepth` parameter determines how many nearest neighbours shall be retrieved.
 Now the system finds all the unique documents which the neighbours point
 
-#### `POST /search`
+#### `GET /search`
 - **Purpose**: Performs semantic search across documents.
 - **Request Schema**:
 ```json
@@ -290,23 +290,41 @@ Additionally, it is informed of its abaility to perform database searches by wri
 If the command was successful, the system will show the output to the LLM, which will now finally answer the question.
 
 #### `WebSocket /chat`
-- **Purpose**: Opens a web socket connection for streaming LLM responses.
-- **Request Schema**:
+- **Purpose**: Opens a WebSocket connection for managing and interacting with LLM chat sessions. Supports starting, sending messages, pausing, resuming, and deleting chats.
+- **Request Schema**: It uses a predefinded actions, which are sent as JSON messages over the WebSocket.
 ```json
 {
-  "type": "object",
-  "properties": {
-    "question": {
-      "type": "string",
-      "description": "The question to ask the LLM"
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "action": { "const": "start" },
+        "chat_id": { "type": "string" }
+      },
+      "required": ["action", "chat_id"]
     },
-    "searchDepth": {
-      "type": "integer",
-      "description": "Depth for document retrieval",
-      "default": 10
+    {
+      "type": "object",
+      "properties": {
+        "action": { "const": "message" },
+        "chat_id": { "type": "string" },
+        "message": { "type": "string" },
+        "use_db": { "type": "boolean" },
+        "rag_search_depth": { "type": "integer" },
+        "show_chat_history": { "type": "boolean" },
+        "resuming": { "type": "boolean" }
+      },
+      "required": ["action", "chat_id", "message"]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "action": { "enum": ["pause", "resume", "delete"] },
+        "chat_id": { "type": "string" }
+      },
+      "required": ["action", "chat_id"]
     }
-  },
-  "required": ["question"]
+  ]
 }
 ```
-- **Response**: Streams text responses through the WebSocket connection
+- **Response Schema**: Text messages streamed back to the client, depending on the action.

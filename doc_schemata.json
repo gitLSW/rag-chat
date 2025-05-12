@@ -1,0 +1,192 @@
+{
+    "type": "object",
+    "properties": {
+      "invoice": {
+        "type": "object",
+        "properties": {
+          "invoiceNumber": { "type": "string" },
+          "invoiceDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "dueDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "vendorName": { "type": "string" },
+          "vendorAddress": { "type": "string" },
+          "vendorTaxID": { "type": "string" },
+          "customerName": { "type": "string" },
+          "customerAddress": { "type": "string" },
+          "customerTaxID": { "type": "string" },
+          "lineItems": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "quantity": { "type": "integer" },
+                "unitPrice": { "type": "number" },
+                "totalPrice": { "type": "number" }
+              },
+              "required": ["description", "quantity", "unitPrice", "totalPrice"]
+            }
+          },
+          "subtotal": { "type": "number" },
+          "tax": { "type": "number" },
+          "totalAmount": { "type": "number" },
+          "currency": { "type": "string" }
+        },
+        "required": [
+          "invoiceNumber", "invoiceDate", "dueDate", "vendorName", "vendorAddress", 
+          "vendorTaxID", "customerName", "customerAddress", "customerTaxID", "lineItems", 
+          "subtotal", "tax", "totalAmount", "currency"
+        ]
+      },
+      "delivery note": {
+        "type": "object",
+        "properties": {
+          "deliveryNoteNumber": { "type": "string" },
+          "deliveryDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "supplierName": { "type": "string" },
+          "supplierAddress": { "type": "string" },
+          "customerName": { "type": "string" },
+          "customerAddress": { "type": "string" },
+          "deliveryAddress": { "type": "string" },
+          "itemsDelivered": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "quantity": { "type": "integer" },
+                "unitOfMeasure": { "type": "string" },
+                "batchNumber": { "type": "string" }
+              },
+              "required": ["description", "quantity", "unitOfMeasure", "batchNumber"]
+            }
+          },
+          "deliveryMethod": { "type": "string" },
+          "vehicleNumber": { "type": "string" },
+          "receiverName": { "type": "string" },
+          "receiverSignature": { "type": "string" }
+        },
+        "required": [
+          "deliveryNoteNumber", "deliveryDate", "supplierName", "supplierAddress", 
+          "customerName", "customerAddress", "deliveryAddress", "itemsDelivered", 
+          "deliveryMethod", "vehicleNumber", "receiverName", "receiverSignature"
+        ]
+      },
+      "purchase order": {
+        "type": "object",
+        "properties": {
+          "poNumber": { "type": "string" },
+          "poDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "buyerName": { "type": "string" },
+          "buyerAddress": { "type": "string" },
+          "supplierName": { "type": "string" },
+          "supplierAddress": { "type": "string" },
+          "itemsOrdered": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "quantity": { "type": "integer" },
+                "unitPrice": { "type": "number" }
+              },
+              "required": ["description", "quantity", "unitPrice"]
+            }
+          },
+          "totalAmount": { "type": "number" },
+          "currency": { "type": "string" },
+          "deliveryDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" }
+        },
+        "required": [
+          "poNumber", "poDate", "buyerName", "buyerAddress", "supplierName", 
+          "supplierAddress", "itemsOrdered", "totalAmount", "currency", "deliveryDate"
+        ]
+      },
+      "receipt": {
+        "type": "object",
+        "properties": {
+          "receiptNumber": { "type": "string" },
+          "receiptDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "payerName": { "type": "string" },
+          "payeeName": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "amount": { "type": "number" }
+              },
+              "required": ["description", "amount"]
+            }
+          },
+          "totalAmount": { "type": "number" },
+          "paymentMethod": { "type": "string" },
+          "currency": { "type": "string" }
+        },
+        "required": [
+          "receiptNumber", "receiptDate", "payerName", "payeeName", "items", 
+          "totalAmount", "paymentMethod", "currency"
+        ]
+      },
+      "credit note": {
+        "type": "object",
+        "properties": {
+          "creditNoteNumber": { "type": "string" },
+          "issueDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "relatedInvoiceNumber": { "type": "string" },
+          "supplierName": { "type": "string" },
+          "customerName": { "type": "string" },
+          "reason": { "type": "string" },
+          "amount": { "type": "number" },
+          "currency": { "type": "string" }
+        },
+        "required": [
+          "creditNoteNumber", "issueDate", "relatedInvoiceNumber", "supplierName", 
+          "customerName", "reason", "amount", "currency"
+        ]
+      },
+      "timesheet": {
+        "type": "object",
+        "properties": {
+          "employeeName": { "type": "string" },
+          "employeeID": { "type": "string" },
+          "weekStartDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": { "type": "string" },
+                "project": { "type": "string" },
+                "hoursWorked": { "type": "number" }
+              },
+              "required": ["date", "project", "hoursWorked"]
+            }
+          },
+          "totalHours": { "type": "number" },
+          "approvedBy": { "type": "string" }
+        },
+        "required": [
+          "employeeName", "employeeID", "weekStartDate", "entries", "totalHours", "approvedBy"
+        ]
+      },
+      "payment confirmation": {
+        "type": "object",
+        "properties": {
+          "paymentID": { "type": "string" },
+          "paymentDate": { "type": "string", "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$" },
+          "amount": { "type": "number" },
+          "payer": { "type": "string" },
+          "payee": { "type": "string" },
+          "paymentMethod": { "type": "string" },
+          "currency": { "type": "string" },
+          "relatedInvoiceNumber": { "type": "string" }
+        },
+        "required": [
+          "paymentID", "paymentDate", "amount", "payer", "payee", "paymentMethod", 
+          "currency", "relatedInvoiceNumber"
+        ]
+      }
+    },
+    "required": ["invoice", "delivery note", "purchase order", "receipt", "credit note", "timesheet", "payment confirmation"]
+  }  

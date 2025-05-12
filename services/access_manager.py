@@ -4,7 +4,7 @@ from get_env_var import get_env_var
 from fastapi import HTTPException
 from filelock import FileLock
 from pymongo import MongoClient
-from services.api_responses import OKResponse
+from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
@@ -12,7 +12,7 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
-        self.access_data_path = f'./{company_id}/access_data.json'
+        self.access_data_path = f'./companies/{company_id}/access_data.json'
         
         # Connect to admin database (requires admin privileges)
         self.db_client = MongoClient(MONGO_DB_URL)

@@ -28,8 +28,13 @@ def get_env_var(env_var_name: str, default: any = None) -> str:
         MissingEnvVarError: If the variable is not set and no default is provided
     """
     value = os.getenv(env_var_name, default)
-    
+
     if value is None:
         raise MissingEnvVarError(env_var_name)
-        
+    
+    normalized_value = value.lower()
+    boolean_descriptions = ['true', 'false']
+    if normalized_value in boolean_descriptions:
+        return normalized_value == 'true'
+
     return value

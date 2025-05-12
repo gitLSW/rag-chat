@@ -117,12 +117,6 @@ class ErrorHandlerMiddleware:
                 "status_code": status.HTTP_409_CONFLICT,
                 "message": "Duplicate key violation"
             },
-            chroma_errors.NoDatapointsException: {
-                "type": "NoDatapointsError",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_404_NOT_FOUND,
-                "message": "No data points found for query"
-            },
             chroma_errors.IDAlreadyExistsError: {
                 "type": "DuplicateIDError",
                 "log_level": logging.WARNING,
