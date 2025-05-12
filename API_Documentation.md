@@ -9,6 +9,7 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
 ```json
 {
   "companyId": USER_COMPANY_IDENTIFIER,
+  "userId": USER_IDENTIFIER,
   "userRole": USER_ACCSESS_GROUP
 }
 ```

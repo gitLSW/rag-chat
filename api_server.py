@@ -14,7 +14,7 @@ from services.doc_extractor import DocExtractor
 from services.chat_websocket import router as chat_ws_router
 from middleware.auth.token_middleware import TokenMiddleware
 from middleware.auth.api_access_middlware import APIAccessMiddleware
-from middleware.error_handler_middleware import ErrorHandlerMiddleware
+from middleware.error_handler_middleware import ErrorHandlerMiddleware, ErrorHandlingMiddleware
 
 # Load environment variables
 API_KEY = get_env_var('API_KEY')
@@ -78,14 +78,18 @@ class UpdateDocReq(BaseModel):
 # -----------------------------
 
 app = FastAPI()
-app.add_middleware(ErrorHandlerMiddleware)
-app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
-app.add_middleware(
-    APIAccessMiddleware,
-    api_key=API_KEY,
-    allowed_ips=API_ALLOWED_IPs,
-    exempt_paths={'/chat'}
-)
+
+
+# Add the HTTP middleware
+# error_handler = ErrorHandlerMiddleware(app)
+# app.add_middleware(ErrorHandlingMiddleware, error_handler=error_handler)
+# app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
+# app.add_middleware(
+#     APIAccessMiddleware,
+#     api_key=API_KEY,
+#     allowed_ips=API_ALLOWED_IPs,
+#     exempt_paths={'/chat'}
+# )
 
 app.include_router(chat_ws_router) # Add /chat endpoint
 
@@ -173,4 +177,5 @@ async def search_docs(req: SemanticSearchReq):
 import uvicorn
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="172.0.0.1", port=7500, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=7500)
+    print('Started Server...')

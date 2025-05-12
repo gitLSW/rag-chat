@@ -1,67 +1,53 @@
 import logging
-from functools import wraps
-from typing import Callable
-
+import json
+import aiohttp
+import jsonschema
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from pymongo import errors as mongo_errors
 from chromadb import errors as chroma_errors
-from openai import errors as openai_errors
-import jsonschema
-import json
-import aiohttp
+from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
 
 class ErrorHandlerMiddleware:
-    
     def __init__(self, app: FastAPI):
         self.app = app
         self._register_exception_handlers()
-        self._register_middleware()
-
 
     def _register_exception_handlers(self):
-        @self.app.exception_handler(HTTPException)
-        async def http_exception_handler(request: Request, exc: HTTPException):
-            logger.warning(
-                f"HTTPException: {exc.status_code} - {exc.detail}",
-                extra={"path": request.url.path, "status_code": exc.status_code}
-            )
-            return exc
+        self.app.add_exception_handler(HTTPException, self.http_exception_handler)
+        self.app.add_exception_handler(RequestValidationError, self.validation_exception_handler)
+        self.app.add_exception_handler(Exception, self.global_exception_handler)
 
-        @self.app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(request: Request, exc: RequestValidationError):
-            logger.warning(
-                f"RequestValidationError: {str(exc)}",
-                extra={"path": request.url.path, "errors": exc.errors()}
-            )
-            return HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=exc.errors()
-            )
+    async def http_exception_handler(self, request: Request, exc: HTTPException):
+        logger.warning(
+            f"HTTPException: {exc.status_code} - {exc.detail}",
+            extra={"path": request.url.path, "status_code": exc.status_code}
+        )
+        return HTTPException(
+            status_code=exc.status_code,
+            detail=exc.detail
+        )
 
-        @self.app.exception_handler(Exception)
-        async def global_exception_handler(request: Request, exc: Exception):
-            return await self._handle_error(request, exc)
+    async def validation_exception_handler(self, request: Request, exc: RequestValidationError):
+        logger.warning(
+            f"RequestValidationError: {str(exc)}",
+            extra={"path": request.url.path, "errors": exc.errors()}
+        )
+        return HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.errors()
+        )
 
-
-    def _register_middleware(self):
-        @self.app.middleware("http")
-        async def middleware(request: Request, call_next: Callable):
-            try:
-                return await call_next(request)
-            except Exception as exc:
-                return await self._handle_error(request, exc)
-
+    async def global_exception_handler(self, request: Request, exc: Exception):
+        return await self._handle_error(request, exc)
 
     async def _handle_error(self, request: Request, exc: Exception):
-        # Environment variable errors - let these crash the system
-        if isinstance(exc, (KeyError,)) and "env" in str(exc).lower():
+        if isinstance(exc, KeyError) and "env" in str(exc).lower():
             raise exc
 
-        # Determine log level and response based on error type
         error_info = self._classify_error(exc)
         
         logger.log(
@@ -80,12 +66,9 @@ class ErrorHandlerMiddleware:
             status_code=error_info["status_code"],
             detail=error_info["message"]
         )
-        
 
     def _classify_error(self, exc: Exception) -> dict:
-        """Classify error and return appropriate response details"""
         error_map = {
-            # File operations
             FileNotFoundError: {
                 "type": "FileNotFound",
                 "log_level": logging.WARNING,
@@ -110,8 +93,6 @@ class ErrorHandlerMiddleware:
                 "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "message": "Filesystem operation failed"
             },
-            
-            # Database operations
             mongo_errors.ConnectionFailure: {
                 "type": "DatabaseConnectionError",
                 "log_level": logging.CRITICAL,
@@ -148,40 +129,12 @@ class ErrorHandlerMiddleware:
                 "status_code": status.HTTP_409_CONFLICT,
                 "message": "Document ID already exists"
             },
-            
-            # External services
-            openai_errors.APIError: {
-                "type": "LLMAPIError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_502_BAD_GATEWAY,
-                "message": "AI service API error"
-            },
-            openai_errors.APIConnectionError: {
-                "type": "LLMConnectionError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_503_SERVICE_UNAVAILABLE,
-                "message": "Could not connect to AI service"
-            },
-            openai_errors.RateLimitError: {
-                "type": "LLMRateLimit",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_429_TOO_MANY_REQUESTS,
-                "message": "AI service rate limit exceeded"
-            },
-            openai_errors.Timeout: {
-                "type": "LLMTimeout",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_504_GATEWAY_TIMEOUT,
-                "message": "AI service timeout"
-            },
             aiohttp.ClientError: {
                 "type": "HTTPClientError",
                 "log_level": logging.ERROR,
                 "status_code": status.HTTP_502_BAD_GATEWAY,
                 "message": "External service communication failed"
             },
-            
-            # Document processing
             jsonschema.exceptions.ValidationError: {
                 "type": "SchemaValidationError",
                 "log_level": logging.WARNING,
@@ -200,8 +153,6 @@ class ErrorHandlerMiddleware:
                 "status_code": status.HTTP_400_BAD_REQUEST,
                 "message": "Invalid input type"
             },
-            
-            # Resource errors
             MemoryError: {
                 "type": "MemoryError",
                 "log_level": logging.CRITICAL,
@@ -214,8 +165,6 @@ class ErrorHandlerMiddleware:
                 "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "message": "Unexpected runtime error"
             },
-            
-            # Default catch-all
             Exception: {
                 "type": "UnexpectedError",
                 "log_level": logging.ERROR,
@@ -224,9 +173,19 @@ class ErrorHandlerMiddleware:
             }
         }
 
-        # Find the most specific matching error class
         for error_class, info in error_map.items():
             if isinstance(exc, error_class):
                 return info
-        
         return error_map[Exception]
+
+
+class ErrorHandlingMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, error_handler: ErrorHandlerMiddleware):
+        super().__init__(app)
+        self.error_handler = error_handler
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            return await self.error_handler._handle_error(request, exc)

@@ -2,23 +2,23 @@ import os
 import re
 import json
 import logging
-from ..get_env_var import get_env_var
+from get_env_var import get_env_var
 
 from filelock import FileLock
 
 import jsonschema
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse
+from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
 from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
 
-from access_manager import get_access_manager, InsufficientAccessError, DocumentNotFoundError
+from services.access_manager import get_access_manager
 from vllm import SamplingParams
-from vllm_service import LLMService
-from doc_extractor import DocExtractor
-from doc_path_classifier import DocPathClassifier
+from services.vllm_service import LLMService
+from services.doc_extractor import DocExtractor
+from services.doc_path_classifier import DocPathClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +41,6 @@ BASE_DOC_SCHEMA = {
     },
     "required": ["id", "path", "docType", "accessGroups"]
 }
-
-
-class OKResponse(JSONResponse):
-    def __init__(self, detail='Success', data=None):
-        self.data = data
-        self.detail = detail
-        super().__init__(status_code=200, content={
-            "detail": detail,
-            "data": data
-        })
 
 
 class RAGService:

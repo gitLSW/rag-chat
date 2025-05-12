@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 import mimetypes
 
-from ocr import OCR
+from services.ocr import OCR
 import fitz  # PyMuPDF
 import docx
 import openpyxl

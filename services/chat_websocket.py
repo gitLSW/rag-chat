@@ -18,7 +18,6 @@ class MessageAction(BaseChatAction):
     use_db: Optional[bool] = False
     rag_search_depth: Optional[int] = None
     show_chat_history: Optional[bool] = False
-    is_reasoning_model: Optional[bool] = False
     resuming: Optional[bool] = False
 
 class PauseChatAction(BaseChatAction):
@@ -47,6 +46,7 @@ active_chats: dict[str, LLMChat] = {}
 async def websocket_query(websocket: WebSocket):
     await websocket.accept()
     company_id = websocket.scope["state"].company_id
+    user_id = websocket.scope["state"].user_id
     user_role = websocket.scope["state"].user_role
 
     try:
@@ -67,6 +67,7 @@ async def websocket_query(websocket: WebSocket):
                     await websocket.send_text(f"[ERROR] Chat {action.chat_id} already exists")
                     continue
                 active_chats[action.chat_id] = LLMChat(
+                    userId=user_id,
                     company_id=company_id,
                     chat_id=action.chat_id,
                     user_access_role=user_role,
@@ -88,7 +89,6 @@ async def websocket_query(websocket: WebSocket):
                         use_db=action.use_db,
                         rag_search_depth=action.rag_search_depth,
                         show_chat_history=action.show_chat_history,
-                        is_reasoning_model=action.is_reasoning_model,
                         resuming=action.resuming,
                     ):
                         await websocket.send_text(chunk)

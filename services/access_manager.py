@@ -1,24 +1,12 @@
 import os
 import json
-from ..get_env_var import get_env_var
+from get_env_var import get_env_var
 from fastapi import HTTPException
 from filelock import FileLock
 from pymongo import MongoClient
-from rag_service import OKResponse
+from services.api_responses import OKResponse
 
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
-
-
-class DocumentNotFoundError(HTTPException):
-    def __init__(self, doc_id, detail=None):
-        super().__init__(404, detail if detail else f"Doc {doc_id} doesn't exist! Create it with POST /documents first.")
-        self.doc_id = doc_id
-
-
-class InsufficientAccessError(HTTPException):
-    def __init__(self, user_access_role, detail='Insufficient access rights, permission denied'):
-        super().__init__(status_code=403, detail=detail)
-        self.user_access_role = user_access_role
 
 
 class AccessManager:

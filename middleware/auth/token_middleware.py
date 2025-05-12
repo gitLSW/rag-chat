@@ -4,7 +4,7 @@ from jose import jwt, JWTError
 from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
-from ..services.access_manager import get_access_manager
+from services.access_manager import get_access_manager
 
 # PUBLIC_ROUTES = ["/route"]
 
@@ -56,6 +56,10 @@ class TokenMiddleware(BaseHTTPMiddleware):
         if not company_id:
             raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the companyId.")
         
+        user_id = payload.get("userId")
+        if not user_id:
+            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userId.")
+
         user_role = payload.get("userRole")
         if not user_role:
             raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userRole.")
@@ -65,6 +69,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             raise HTTPException(400, f"Unknown user_role {user_role}. Register it with POST /accessGroups first.")
 
         req.state.company_id = company_id
+        req.state.user_id = user_id
         req.state.user_role = user_role
 
         return await call_next(req)
