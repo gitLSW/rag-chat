@@ -17,7 +17,7 @@ from sentence_transformers import SentenceTransformer, util # Pretrained model t
 
 from services.access_manager import get_access_manager
 from vllm import SamplingParams
-from services.vllm_service import LLMService
+from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
 from services.doc_path_classifier import DocPathClassifier
 
@@ -91,11 +91,16 @@ class RAGService:
 
         jsonschema.Draft7Validator.check_schema(json_schema) # will raise jsonschema.exceptions.SchemaError if invalid
         
+        self.doc_schemata[doc_type] = json_schema
+        doc_schemata_str = json.dumps(self.doc_schemata)
+        doc_schemata_tokens = tokenizer.encode(doc_schemata_str, add_special_tokens=False)
+        if int(LLM_MAX_TEXT_LEN * 0.75) < len(doc_schemata_tokens):
+            raise HTTPException(409, "Too many json schemata are registered at this company. The LLM will not be able to properly extract data for so many classes.")
+        
         lock = FileLock(self.schemata_path)
         with lock:
-            self.doc_schemata[doc_type] = json_schema
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
-                f.write(json.dumps(self.doc_schemata))
+                f.write(doc_schemata_str)
         
         if self.schemata_embeddings:
             self._update_schemata_embeddings()

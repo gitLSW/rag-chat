@@ -97,8 +97,7 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 # )
 
 tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
-llm_config = AutoConfig.from_pretrained(LLM_MODEL)
-llm_max_text_len = getattr(llm_config, 'max_position_embeddings', tokenizer.model_max_length)
+LLM_MAX_TEXT_LEN = getattr(AutoConfig.from_pretrained(LLM_MODEL), 'max_position_embeddings', tokenizer.model_max_length)
 
 
 import string
@@ -132,7 +131,7 @@ llm = LLMDummy()
 @dataclass
 class RequestState:
     sampling_params: SamplingParams
-    chunk_states: Dict[str, Deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=llm_max_text_len))) # [chunk_req_id: chunk_token_ids]
+    chunk_states: Dict[str, Deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=LLM_MAX_TEXT_LEN))) # [chunk_req_id: chunk_token_ids]
 
 
 class LLMService:
@@ -231,16 +230,15 @@ class LLMService:
         # Tokenize prompt and optional context
         prompt_ids = tokenizer.encode("\n\n" + prompt, add_special_tokens=False)
         
-        if llm_max_text_len < len(prompt_ids):
+        if LLM_MAX_TEXT_LEN < len(prompt_ids):
             raise ValueError("Prompt is too long for LLM context frame")
         
         context_ids = ((tokenizer.encode(history, add_special_tokens=False) if history else []) +
                        (tokenizer.encode(context, add_special_tokens=False) if context else []))
         
-        # Enforce prompt size <= 1/4 frame
-        quarter_frame = llm_max_text_len // 4
-        if llm_max_text_len < len(prompt_ids) + len(context_ids): # chunking occurrs
-            if quarter_frame < len(prompt_ids):
+        if LLM_MAX_TEXT_LEN < len(prompt_ids) + len(context_ids): # chunking occurrs
+            # Enforce prompt size <= 1/4 frame
+            if LLM_MAX_TEXT_LEN // 4 < len(prompt_ids):
                 raise ValueError("Prompt is too long for LLM context frame. Allow chunking or disable using chat history or document search")
             
             if not allow_chunking:
@@ -249,7 +247,7 @@ class LLMService:
             return [context_ids + prompt_ids]
             
         chunks = []
-        available_per_chunk = llm_max_text_len - len(prompt_ids)
+        available_per_chunk = LLM_MAX_TEXT_LEN - len(prompt_ids)
 
         # Build chunks: always include at least the prompt
         if context_ids:
