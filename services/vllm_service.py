@@ -96,26 +96,38 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 #         # speculative_config=None  # No configuration for speculative decoding
 # )
 
-import string
-import random
-class LLMDummy:
-    async def generate(prompt_token_ids, sampling_params, request_id, stream):
-        characters = string.ascii_letters + string.digits + string.punctuation
-        while True:
-            if random.random() < 0.1:
-                return
-            await asyncio.sleep(random.uniform(0.1, 0.3))
-            chunk = ''.join(random.choice(characters) for _ in range(8))
-            print(chunk)
-            yield chunk
-    
-    async def abort(req_id):
-        pass
-llm = LLMDummy()
-
 tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
 llm_config = AutoConfig.from_pretrained(LLM_MODEL)
 llm_max_text_len = getattr(llm_config, 'max_position_embeddings', tokenizer.model_max_length)
+
+
+import string
+import random
+
+@dataclass
+class OutputDummy:
+    text: str
+    token_ids: List[int]
+
+@dataclass
+class OutputsDummy:
+    outputs: List[OutputDummy]
+
+class LLMDummy:
+    async def generate(self, prompt_token_ids, sampling_params, request_id, stream):
+        characters = string.ascii_letters + string.digits + string.punctuation
+        while True:
+            if random.random() < 0.05:
+                return
+            await asyncio.sleep(random.uniform(0.1, 0.3))
+            chunk = ''.join(random.choice(characters) for _ in range(8))
+            token_ids = tokenizer.encode(chunk, add_special_tokens=False)
+            yield OutputsDummy(outputs=[OutputDummy(chunk, token_ids)])
+    
+    async def abort(self, req_id):
+        pass
+llm = LLMDummy()
+
 
 @dataclass
 class RequestState:
@@ -165,46 +177,6 @@ class LLMService:
             del self._current_requests[req_id]
 
 
-    async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params):
-        chunk_req_id = f'{req_id}-chunk{chunk_index}'
-        try:
-            self._current_requests[req_id].chunk_states[chunk_req_id].append(chunk)
-            async for output in llm.generate(
-                prompt_token_ids=chunk,
-                sampling_params=sampling_params,
-                request_id=chunk_req_id,
-                stream=True
-            ):
-                if self._current_requests.get(req_id): # In case it was aborted
-                    self._current_requests[req_id].chunk_states[chunk_req_id].append(output.outputs[0].token_ids)
-                await queues[chunk_index].put(output.outputs[0].text)
-        finally:
-            await queues[chunk_index].put(None)  # Signal that the stream is done
-
-
-    def pause(self, req_id):
-        """
-        Pause an ongoing request by its request ID.
-        """
-        try:
-            llm.abort(req_id)
-            return True
-        except Exception as e:
-            # Log or handle specific errors as needed
-            # raise RuntimeError(f"Failed to cancel request {req_id}: {str(e)}")
-            return False
-        
-
-    def abort(self, req_id):
-        """
-        End an ongoing request by its request ID.
-        """
-        success = self.pause(req_id)
-        if success and req_id in self._current_requests.keys():
-            del self._current_requests[req_id]
-        return success
-        
-
     async def resume(self, req_id):
         req_state = self._current_requests.get(req_id)
         if not req_state:
@@ -230,6 +202,29 @@ class LLMService:
         # Ensure all tasks are completed
         await asyncio.gather(*tasks)
         del self._current_requests[req_id]
+
+
+    def pause(self, req_id):
+        """
+        Pause an ongoing request by its request ID.
+        """
+        try:
+            llm.abort(req_id)
+            return True
+        except Exception as e:
+            # Log or handle specific errors as needed
+            # raise RuntimeError(f"Failed to cancel request {req_id}: {str(e)}")
+            return False
+        
+
+    def abort(self, req_id):
+        """
+        End an ongoing request by its request ID.
+        """
+        success = self.pause(req_id)
+        if success and req_id in self._current_requests.keys():
+            del self._current_requests[req_id]
+        return success
         
 
     def _get_chunks(self, prompt, context, history, allow_chunking):
@@ -268,3 +263,20 @@ class LLMService:
             chunks.append(prompt_ids)
 
         return chunks
+    
+
+    async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params):
+        chunk_req_id = f'{req_id}-chunk{chunk_index}'
+        try:
+            req = self._current_requests.get(req_id)
+            req.chunk_states[chunk_req_id].extend(chunk) # Add input to request chunk state
+            async for output in llm.generate(prompt_token_ids=chunk,
+                                             sampling_params=sampling_params,
+                                             request_id=chunk_req_id,
+                                             stream=True):
+                req = self._current_requests.get(req_id) # Always get again in case it was aborted (= deleted)
+                if req:
+                    req.chunk_states[chunk_req_id].extend(output.outputs[0].token_ids)
+                await queues[chunk_index].put(output.outputs[0].text)
+        finally:
+            await queues[chunk_index].put(None)  # Signal that the stream is done

@@ -107,8 +107,7 @@ async def create_doc(req: Request,
                      file: UploadFile = File(...),
                      forceOcr: bool = Form(False),
                      allowOverride: bool = Form(True),
-                     docData: str = Form(...)
-                 ):
+                     docData: str = Form(...)):
     # THIS IS HOW TOE FORM IS SET UP: {
     #     file: File,
     #     forceOcr: bool,

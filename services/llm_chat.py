@@ -100,12 +100,10 @@ class LLMChat:
                 prompt += "These texts might be relevant to the previous message:"
 
             resume_req_id = f"{self.user_id}-{self.chat_id}-final-answer"
-            generator = self.llm_service.query(
-                prompt=prompt,
-                context=doc_sources_summary,
-                history=history,
-                req_id=resume_req_id
-            )
+            generator = self.llm_service.query(prompt=prompt,
+                                               context=doc_sources_summary,
+                                               history=history,
+                                               req_id=resume_req_id)
             self._answer_req_id = resume_req_id
 
         # Now we can safely remove the preprocessing tasks, because they completed and we started and saved the final generation

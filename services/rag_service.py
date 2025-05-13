@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import torch
 import logging
 from utils import get_env_var, get_company_path
 
@@ -70,6 +71,7 @@ class RAGService:
         self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
         with open(self.schemata_path, 'r', errors='ignore') as f:
             self.doc_schemata = json.loads(f.read())
+        self.schemata_embeddings = None
 
         # Create or connect to database
         client = MongoClient(MONGO_DB_URL)
@@ -95,6 +97,9 @@ class RAGService:
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(json.dumps(self.doc_schemata))
         
+        if self.schemata_embeddings:
+            self._update_schemata_embeddings()
+        
         return OKResponse(f"Successfully added new JSON schema for {doc_type}", json_schema)
 
 
@@ -110,6 +115,9 @@ class RAGService:
             del self.doc_schemata[doc_type]
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(json.dumps(self.doc_schemata))
+        
+        if self.schemata_embeddings:
+            self._update_schemata_embeddings()
         
         return OKResponse(f"Successfully deleted JSON schema for '{doc_type}'")
     
@@ -142,7 +150,7 @@ class RAGService:
 
         # Extract JSON
         doc_type = doc_data.get('docType')
-        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
+        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
         
         if doc_schema:
             # Build final schema
@@ -172,14 +180,15 @@ class RAGService:
             block_embedding = RAGService.embedding_model.encode(paragraph)
 
             # Store the paragraph's metadata in the vector DB using its embedding
+            paragraph_data = {
+                'docId': doc_id,
+                'pageNum': page_num,
+                'docType': doc_type
+            }
             self.vector_db.upsert(
                 embeddings=[block_embedding.tolist()],
                 ids=[str(hash(str(block_embedding)))],
-                metadatas=[{
-                    'docId': doc_id,
-                    'pageNum': page_num,
-                    'docType': doc_type
-                }]
+                metadatas=[{k: v for k, v in paragraph_data.items() if v is not None}] # Filter None types, chromaDB forbidds them
             )
 
         # Save the extracted content in .txt file
@@ -295,7 +304,7 @@ class RAGService:
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
 
-    async def extract_json(self, text, doc_type=None):
+    async def extract_json(self, paragraphs, doc_type=None):
         """
         Extracts a filled JSON object from LLM output based on a schema and checks if all fields are filled.
 
@@ -310,10 +319,12 @@ class RAGService:
                 - dict: The JSON schema used to validate it
                 - bool: Whether all schema fields were filled.
         """
+        paragraph_texts = map(lambda paragraph: paragraph[1], paragraphs)
+
         if doc_type:
             json_schema = self.doc_schemata.get(doc_type)
         else:
-            json_schema, doc_type = self._identify_doc_type(text)
+            json_schema, doc_type = self._identify_doc_type(paragraph_texts)
 
         if not json_schema:
             return None, doc_type, None, False
@@ -332,7 +343,7 @@ class RAGService:
             ### TASK REQUIREMENT
             You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
             
-            {text}
+            {"/n/n".join(paragraph_texts)}
 
             ### STRICT RULES FOR GENERATING OUTPUT:
             **ALWAYS PROVIDE YOUR FINAL ANSWER**:
@@ -353,9 +364,16 @@ class RAGService:
         
         parsed_json = None # prevents UnboundLocalError !
         try:
-            res = await RAGService.llm_service.query(prompt, sampling_params, allow_chunking=False)
-
-            answer_json = re.search(r"```json\s*(.*?)\s*```", res, re.DOTALL).group(1)
+            answer = ""
+            async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
+                answer += chunk
+            
+            answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
+            if answer_json:
+                answer_json.group(1)
+            else:
+                raise ValueError("No JSON found in LLM response")
+            
             parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
             return parsed_json, doc_type, json_schema, True
@@ -370,21 +388,22 @@ class RAGService:
         from collections import defaultdict
 
         # Precompute schema embeddings
-        schema_embeddings = {
-            doc_type: RAGService.embedding_model.encode(json.dumps(schema))
-            for doc_type, schema in self.doc_schemata.items()
-        }
+        if not self.schemata_embeddings:
+            self._update_schemata_embeddings()
 
         vote_counts = defaultdict(int)
         valid_vote_count = 0
 
         for paragraph in paragraphs:
-            text_embedding = RAGService.embedding_model.encode(paragraph)
+            paragraph_embedding = RAGService.embedding_model.encode(paragraph)
 
             # Compare paragraph to all schema embeddings
             similarity_scores = {
-                doc_type: util.pytorch_cos_sim(text_embedding, schema_embedding).item()
-                for doc_type, schema_embedding in schema_embeddings.items()
+                doc_type: util.pytorch_cos_sim(
+                    torch.tensor(paragraph_embedding).unsqueeze(0),
+                    torch.tensor(schema_embedding).unsqueeze(0)
+                ).item()
+                for doc_type, schema_embedding in self.schemata_embeddings.items()
             }
 
             # Find best match
@@ -421,6 +440,13 @@ class RAGService:
             'type': 'object',
             'properties': {**json_schema.get('properties', {}), **BASE_DOC_SCHEMA['properties']},
             'required': list(set(BASE_DOC_SCHEMA['required'] + json_schema.get('required', [])))
+        }
+    
+    
+    def _update_schemata_embeddings(self):
+        self.schemata_embeddings = {
+            doc_type: RAGService.embedding_model.encode(json.dumps(schema))
+            for doc_type, schema in self.doc_schemata.items()
         }
 
 

@@ -78,9 +78,7 @@ class AccessManager:
 
 
     def has_doc_access(self, doc_id, user_access_role):
-        print(MONGO_DB_URL)
         doc = self.db_client[self.company_id]['docs'].find_one({ '_id': doc_id })
-        print(doc)
         if not doc:
             raise DocumentNotFoundError(doc_id)
         
