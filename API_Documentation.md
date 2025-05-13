@@ -46,6 +46,7 @@ They are named `admin` in the System.
 
 ### Document Schemata
 The system automatically validates extracted and uploded document metadata against the previously defined JSON schemata.
+If too many schemata are registered (= too much text for the LLM), no new ones will be able to be created.
 
 #### `POST /documentSchemata`
 - **Purpose**: Defines a new JSON schema for a specific document type. Cannot override existing Schemata.
@@ -80,7 +81,7 @@ The system automatically validates extracted and uploded document metadata again
 ### Document Processing & Storage
 The system aims to provide a semantic search and metadata extraction from natural text documents as well as a LLM chat infused with relevant context data.
 After uploading a file, the system extracts its text as a string via different extraction libraries or an OCR, if the file is a scanned PDF (page contains a image).
-The extracted text gets split into paragraphs and the paragraphs get vectorized by the `BERT Sentence Transformer`.
+The extracted text gets persisted and split into paragraphs and the paragraphs get vectorized by the `BERT Sentence Transformer`.
 These paragraph vector embeddings get saved alongside the exact page and documentId in a VectorDB (`ChromaDB`).
 If no document metadata or type was provided the system will automatically try to find a document type by comparing the sentence emebddings of each paragraph to every previously defined JSON schema, by checking the alignment of the vectors via the dot-product.
 Only if they align above a certain threshold, will the document type receive a score point.
@@ -93,7 +94,7 @@ If it passed, it will be added to the document database (`MongoDB`).
 Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
-- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema.
+- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If the automatic JSON extract failed for a given doc_type, the plain document text and paragraph embeddings will still be saved, but its response will return None for doc_type.
 - **Request Schema**:
 ```json
 {
