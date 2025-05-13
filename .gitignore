@@ -11,7 +11,11 @@ __pycache__/
 
 # DB
 chroma_db/
+mongo_db/
 access_rights.json
+
+# Logging
+log/
 
 # Testing stuff
 playground

@@ -2,7 +2,7 @@ import os
 import re
 import json
 import logging
-from get_env_var import get_env_var
+from utils import get_env_var, get_company_path
 
 from filelock import FileLock
 
@@ -28,24 +28,24 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'  # SentenceTransformer model used to generate the embedding vector representation of a paragraph
 
 BASE_DOC_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "id": {"type": "string"},
-        "path": {"type": "string"},
-        "docType": {"type": ["string", "null"]},
-        "accessGroups": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1
+    'type': 'object',
+    'properties': {
+        'id': {'type': 'string'},
+        'path': {'type': 'string'},
+        'docType': {'type': ['string', 'null']},
+        'accessGroups': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'minItems': 1
         }
     },
-    "required": ["id", "path", "docType", "accessGroups"]
+    'required': ['id', 'path', 'docType', 'accessGroups']
 }
 
 
 class RAGService:
     # Initialize persistent vector database (ChromaDB)
-    vector_db = chromadb.PersistentClient(path="chroma_db")
+    vector_db = chromadb.PersistentClient(path=os.path.join('databases', 'chroma_db'))
     doc_extractor = DocExtractor()
     llm_service = LLMService()
 
@@ -67,8 +67,8 @@ class RAGService:
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         self.doc_path_classifier = DocPathClassifier(company_id)
 
-        self.schemata_path = f'./companies/{company_id}/doc_schemata.json'
-        with open(self.schemata_path, "r", encoding="utf-8", errors="ignore") as f:
+        self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
+        with open(self.schemata_path, 'r', errors='ignore') as f:
             self.doc_schemata = json.loads(f.read())
 
         # Create or connect to database
@@ -78,14 +78,14 @@ class RAGService:
 
     def add_json_schema_type(self, doc_type, json_schema, user_access_role):
         if user_access_role != 'admin':
-            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+            raise InsufficientAccessError(user_access_role, "Insufficient access rights, permission denied. Admin rights required")
         
         if doc_type in self.doc_schemata.keys():
-            raise HTTPException(409, f'The document type {doc_type}, is already used by another JSON schema.')
+            raise HTTPException(409, f"The document type {doc_type}, is already used by another JSON schema.")
         
         json_type = json_schema.get('type')
         if not json_type or json_type != 'object':
-            raise HTTPException(400, 'The JSON schema must be an object type')
+            raise HTTPException(400, "The JSON schema must be an object type")
 
         jsonschema.Draft7Validator.check_schema(json_schema) # will raise jsonschema.exceptions.SchemaError if invalid
         
@@ -95,15 +95,15 @@ class RAGService:
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(json.dumps(self.doc_schemata))
         
-        return OKResponse(f'Successfully added new JSON schema for {doc_type}', json_schema)
+        return OKResponse(f"Successfully added new JSON schema for {doc_type}", json_schema)
 
 
     def delete_json_schema_type(self, doc_type, user_access_role):
         if user_access_role != 'admin':
-            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+            raise InsufficientAccessError(user_access_role, "Insufficient access rights, permission denied. Admin rights required")
         
         if self.docs_db.find_one({ 'doc_type': doc_type }):
-            raise HTTPException(409, f'Cannot delete schema "{doc_type}" because it was already used to extract a document.')
+            raise HTTPException(409, f"Cannot delete schema '{doc_type}' because it was already used to extract a document.")
         
         lock = FileLock(self.schemata_path)
         with lock:
@@ -111,54 +111,39 @@ class RAGService:
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(json.dumps(self.doc_schemata))
         
-        return OKResponse(f'Successfully deleted JSON schema for "{doc_type}"')
+        return OKResponse(f"Successfully deleted JSON schema for '{doc_type}'")
     
 
     async def create_doc(self, source_path, doc_data, force_ocr, allow_override, user_access_role):
-
-        print('UTVYIUBNO')
-
         doc_id = doc_data.get('id')
         if not doc_id:
-            raise HTTPException(400, 'docData must contain an "id"')
+            raise HTTPException(400, "docData must contain an 'id'")
         
-        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
+        txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         if not allow_override and os.path.exists(txt_path):
-            raise HTTPException(409, f'Doc {doc_id} already exists and override was disallowed !')
+            raise HTTPException(409, f"Doc {doc_id} already exists and override was disallowed !")
         
-        print('UTVYIUBNO')
-
         # Validate user access
         try:
             self.access_manager.has_doc_access(doc_id, user_access_role)
         except DocumentNotFoundError as e:
             pass # Expeceted behavior
 
-        print('UTVYIUBNO')
-        
         doc_data['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
 
-        print('1')
-
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path, force_ocr)
-        doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
+        doc_text = "\n\n".join(paragraph for _, paragraph in paragraphs)
         
-        print('2')
-
         # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
         if not doc_data.get('path'):
             # Classify Document into a path if non existant
             file_name = source_path.split('/')[-1] # Last element
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + file_name
 
-        print('3')
-
         # Extract JSON
         doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
         
-        print('4')
-
         if doc_schema:
             # Build final schema
             doc_schema = self._merge_with_base_schema(doc_schema)
@@ -168,7 +153,7 @@ class RAGService:
                 doc_data = { **extracted_doc_data, **doc_data }
         elif doc_type:
             # If a doc_type was defined, but no schema exists for it, raise an error
-            raise HTTPException(422, f'No JSON schema was found for docType "{doc_type}". Register a schema for it with POST /documentSchemata')
+            raise HTTPException(422, f"No JSON schema was found for docType '{doc_type}'. Register a schema for it with POST /documentSchemata")
         else:
             doc_type = None
             doc_schema = BASE_DOC_SCHEMA
@@ -203,13 +188,13 @@ class RAGService:
             with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
                 f.write(doc_text)
 
-        return OKResponse(f'Successfully processed Document', doc_data)
+        return OKResponse(f"Successfully processed Document {doc_id}", doc_data)
 
 
     def update_doc_data(self, doc_data, merge_existing, user_access_role):
         doc_id = doc_data.get('id')
         if not doc_id:
-            raise HTTPException(400, 'docData must contain an "id"')
+            raise HTTPException(400, "docData must contain an 'id'")
         
         old_doc = self.access_manager.has_doc_access(doc_id, user_access_role)
         
@@ -222,7 +207,7 @@ class RAGService:
         
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
-            raise HTTPException(422, 'Unknown doc_type. Register the JSON schema with POST /documentSchemata first')
+            raise HTTPException(422, "Unknown doc_type. Register the JSON schema with POST /documentSchemata first.")
         doc_schema = self._merge_with_base_schema(doc_schema)
         
         updated_doc = merged_doc if merge_existing else doc_data
@@ -240,19 +225,19 @@ class RAGService:
         jsonschema.validate(updated_doc, doc_schema)
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
         
-        return OKResponse(f'Successfully updated Document {doc_id}', updated_doc)
+        return OKResponse(f"Successfully updated Document {doc_id}", updated_doc)
 
 
     def get_doc(self, doc_id, user_access_role):
         doc = self.access_manager.has_doc_access(doc_id, user_access_role)
 
-        txt_path = f'./companies/{self.company_id}/docs/{doc_id}.txt'
-        with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+        txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
+        with open(txt_path, 'r', errors='ignore') as f:
             doc_text = f.read()
         
         doc['text'] = doc_text
         
-        return OKResponse(f'Successfully retrieved Document {doc_id}', doc)
+        return OKResponse(f"Successfully retrieved Document {doc_id}", doc)
         
     
     def delete_doc(self, doc_id, user_access_role):
@@ -263,7 +248,7 @@ class RAGService:
         self.vector_db.delete(where={ 'doc_id': doc_id })
 
         # Delete file
-        txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
+        txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
 
         # Delete from json DB
@@ -271,7 +256,7 @@ class RAGService:
         if not doc_data:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist and thus couldn't be removed.")
 
-        return OKResponse(f'Successfully deleted Document {doc_id}', doc_data)
+        return OKResponse(f"Successfully deleted Document {doc_id}", doc_data)
     
 
     def find_docs(self, message, n_results, user_access_role):
@@ -299,7 +284,7 @@ class RAGService:
                 doc_id = doc_data['id']
                 self.access_manager.has_doc_access(doc_id, user_access_role)
             except DocumentNotFoundError:
-                logger.warning(f'Corrupt data. VectorDB is referencing a missing doc with id {doc_id} for company {self.company_id} !')
+                logger.warning(f"Corrupt data. VectorDB is referencing a missing doc with id {doc_id} for company {self.company_id} !")
                 continue
             except InsufficientAccessError:
                 continue
@@ -307,7 +292,7 @@ class RAGService:
             if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
                 valid_docs_data.append(doc_data)
 
-        return OKResponse(f'Found {len(valid_docs_data)}', valid_docs_data)
+        return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
 
     async def extract_json(self, text, doc_type=None):
@@ -377,7 +362,7 @@ class RAGService:
         except jsonschema.exceptions.ValidationError as e:
             return parsed_json, doc_type, json_schema, False
         except (ValueError, IndexError, json.JSONDecodeError) as e:
-            print(f"Failed to extract or parse JSON from model response: {e}")
+            # print(f"Failed to extract or parse JSON from model response: {e}")
             return None, doc_type, json_schema, False
     
 
@@ -424,8 +409,8 @@ class RAGService:
         # Select document type with highest normalized score
         final_type, max_normalized_score = max(normalized_scores.items(), key=lambda x: x[1])
         
-        # If a document's best potential type didn't score above 30% of all the document's paragraphs, it is too ambigous to categorize.
-        if max_normalized_score < 0.3:
+        # If a document's best potential type didn't score above 40% of all the document's paragraphs, it is too ambigous to categorize.
+        if max_normalized_score < 0.4:
             return None, None
 
         return self.doc_schemata[final_type], final_type
@@ -433,9 +418,9 @@ class RAGService:
     
     def _merge_with_base_schema(self, json_schema):
         return {
-            "type": "object",
-            "properties": {**json_schema.get("properties", {}), **BASE_DOC_SCHEMA["properties"]},
-            "required": list(set(BASE_DOC_SCHEMA["required"] + json_schema.get("required", [])))
+            'type': 'object',
+            'properties': {**json_schema.get('properties', {}), **BASE_DOC_SCHEMA['properties']},
+            'required': list(set(BASE_DOC_SCHEMA['required'] + json_schema.get('required', [])))
         }
 
 

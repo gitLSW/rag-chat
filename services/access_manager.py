@@ -1,6 +1,6 @@
 import os
 import json
-from get_env_var import get_env_var
+from utils import get_env_var, get_company_path
 from fastapi import HTTPException
 from filelock import FileLock
 from pymongo import MongoClient
@@ -12,7 +12,7 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
-        self.access_data_path = f'./companies/{company_id}/access_data.json'
+        self.access_data_path = get_company_path(company_id, 'access_data.json')
         
         # Connect to admin database (requires admin privileges)
         self.db_client = MongoClient(MONGO_DB_URL)
@@ -36,7 +36,7 @@ class AccessManager:
             access_role: The access role level (determines which view they can access)
         """
         if user_access_role != 'admin':
-            raise InsufficientAccessError(user_access_role, 'Insufficient access rights, permission denied. Admin rights required')
+            raise InsufficientAccessError(user_access_role, "Insufficient access rights, permission denied. Admin rights required")
         
         # Create view that filters documents where the user's role is in access_groups
         view_name = f'access_view_{access_group}'
@@ -74,11 +74,13 @@ class AccessManager:
                     'access_groups': self.valid_access_groups
                 }, f)
 
-        return OKResponse(f'Successfully added {access_group}')
+        return OKResponse(f"Successfully added {access_group}")
 
 
     def has_doc_access(self, doc_id, user_access_role):
+        print(MONGO_DB_URL)
         doc = self.db_client[self.company_id]['docs'].find_one({ '_id': doc_id })
+        print(doc)
         if not doc:
             raise DocumentNotFoundError(doc_id)
         
@@ -92,10 +94,13 @@ class AccessManager:
         # Validate new_access_groups
         access_groups = set(access_groups or [])
         access_groups.add('admin') # Always add admin
-        invalid_access_groups = [access_group for access_group in access_groups if access_group not in self.valid_access_groups]
+        invalid_access_groups = []
+        for access_group in access_groups:
+            if access_group not in self.valid_access_groups:
+                invalid_access_groups.append(access_group)
         
         if len(invalid_access_groups) > 0:
-            raise HTTPException(409, f"Unregistered access_groups {invalid_access_groups}. Register them with POST '/accessGroups' first.")
+            raise HTTPException(409, f"Unknown access_groups {invalid_access_groups}. Register them with POST /accessGroups first.")
         
         return list(access_groups)
     

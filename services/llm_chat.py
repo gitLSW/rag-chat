@@ -6,8 +6,9 @@ import aiofiles
 from datetime import datetime
 from collections import defaultdict
 from typing import AsyncGenerator, Optional, Dict
-from get_env_var import get_env_var
+from utils import get_env_var, get_company_path
 from pymongo import MongoClient
+from vllm import SamplingParams
 from services.vllm_service import LLMService
 from services.rag_service import get_company_rag_service
 from services.mongo_db_connector import MongoDBConnector
@@ -19,7 +20,7 @@ class ChatEntry:
     def __init__(self, message, use_db=None, rag_search_depth=None, show_chat_history=False):
         self.message = message
         self.time = datetime.now()
-        self.answer: str = ''
+        self.answer: str = ""
 
         self.use_db = use_db
         self.rag_search_depth = rag_search_depth
@@ -71,7 +72,7 @@ class LLMChat:
 
     async def _generate(self, entry) -> AsyncGenerator[str, None]:
         if entry.rag_search_depth and entry.use_db:
-            raise ValueError('Either rag_search_depth or use_db are allowed, not both.')
+            raise ValueError("Either rag_search_depth or use_db are allowed, not both.")
         
         self._curr_chat_entry = entry
 
@@ -96,7 +97,7 @@ class LLMChat:
                 docs_data = self.rag_service.find_docs(entry.message, entry.rag_search_depth)
                 doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, entry.message)
                 doc_sources_summary = "\n\n".join(doc_summaries)
-                prompt += f'These texts might be relevant to the previous message:'
+                prompt += "These texts might be relevant to the previous message:"
 
             resume_req_id = f"{self.user_id}-{self.chat_id}-final-answer"
             generator = self.llm_service.query(
@@ -116,7 +117,7 @@ class LLMChat:
                 entry.answer += chunk
                 yield chunk
         except asyncio.CancelledError:
-            raise asyncio.CancelledError('Final generation request cancelled')
+            raise asyncio.CancelledError("Final generation request cancelled")
 
         if doc_sources_map:
             source_references_str = self._generate_source_references_str(doc_sources_map)
@@ -170,14 +171,14 @@ class LLMChat:
     async def _summarize_docs(self, docs_data, message):
         """Process documents concurrently to generate summaries and collect metadata."""
         async def _resume_doc_summary(generator):
-            summary = ''
+            summary = ""
             try:
                 async for output in generator:
                     summary += output
             except asyncio.CancelledError:
-                raise asyncio.CancelledError('Summarize request cancelled')
+                raise asyncio.CancelledError("Summarize request cancelled")
 
-            return re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL)
+            return re.sub(r"<think>.*?</think>", "", summary, flags=re.DOTALL)
 
         doc_types = set()
         doc_sources_map = defaultdict(set)
@@ -202,16 +203,16 @@ class LLMChat:
             else:
                 async def _load_and_summarize_doc(doc_id, message):
                     # Loads and summarizes a single document.
-                    txt_path = f"./companies/{self.company_id}/docs/{doc_id}.txt"
+                    txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
                     try:
-                        async with aiofiles.open(txt_path, mode='r', encoding='utf-8') as f:
+                        async with aiofiles.open(txt_path, mode='r') as f:
                             doc_text = await f.read()
                     except FileNotFoundError:
                         return '' # TODO: Maybe throw exception
 
-                    message = f'Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}'
+                    message = f"Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}"
                     
-                    req_id = f"{self.user_id}-{self.chat_id}-doc-{doc_id}"
+                    req_id = f'{self.user_id}-{self.chat_id}-doc-{doc_id}'
                     generator = LLMChat.llm_service.query(message, doc_text, req_id=req_id)
                     self._summarize_doc_req_ids[doc_id] = req_id
 
@@ -235,20 +236,20 @@ class LLMChat:
             # stop=["\n\n", "\n", "Q:", "###"]
         )
         async def _resume_db_query(generator):
-            answer_buffer = ''
+            answer_buffer = ""
             mongo_query = None
             try:
                 async for chunk in generator:
                     answer_buffer += chunk
 
-                    if '`' in chunk:
+                    if "`" in chunk:
                         # Check for complete mongo_json block
                         mongo_match = re.search(r"mongo_json\s*(.*?)\s*", answer_buffer, re.DOTALL)
                         if mongo_match:
                             mongo_query = mongo_match.group(1)
                             break  # Stop the first generation
             except asyncio.CancelledError:
-                raise asyncio.CancelledError('DB request cancelled')
+                raise asyncio.CancelledError("DB request cancelled")
 
             # If we found a mongo query, execute it and return it
             if mongo_query:
@@ -267,12 +268,12 @@ class LLMChat:
             return await _resume_db_query(generator)
 
         # Attach MongoDB schema information
-        context = '\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:'
+        context = "\n\n\nYou have read-only access to the MongoDB `docs` collection. All the documents in it have a doc_type field. These are the JSON schemata for each doc_type:"
     
         for doc_type, doc_schema in self.rag_service.doc_schemata:
-            context += f'\n\nDoc_type {doc_type}: {json.dumps(doc_schema)}'
+            context += f"\n\nDoc_type {doc_type}: {json.dumps(doc_schema)}"
         
-        context += '\n\nTry to answer the following message. If you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```.'
+        context += "\n\nTry to answer the following message. If you need to query the MongoDB, write a JSON query in tags like so: ```mongo_json YOUR_QUERY ```."
         
         req_id = f"{self.user_id}-{self.chat_id}-mongo"
         generator = self.llm_service.query(message, context, req_id=req_id, sampling_params=sampling_params, allow_chunking=False)
@@ -307,7 +308,7 @@ class LLMChat:
 
     def _generate_source_references_str(self, doc_sources_map):
         """Generate the source references string."""
-        sources_info = 'Consult these documents for more detail:\n'
+        sources_info = "Consult these documents for more detail:\n"
         for doc_id, pages in doc_sources_map.items():
             try:
                 doc = self.rag_service.docs_db.find_one({ '_id': doc_id })
@@ -317,7 +318,7 @@ class LLMChat:
                 
             sources_info += doc_pseudo_path
             if pages is None:
-                sources_info += '\n'
+                sources_info += "\n"
             else:
-                sources_info += f' on pages {", ".join(map(str, sorted(pages)))}\n'
+                sources_info += f" on pages {", ".join(map(str, sorted(pages)))}\n"
         return sources_info

@@ -44,7 +44,7 @@ class DocExtractor:
 
     @staticmethod
     def extract_text(file_path):
-        return '\n\n'.join(paragraph for _, paragraph in DocExtractor.extract_paragraphs(file_path))
+        return "\n\n".join(paragraph for _, paragraph in DocExtractor.extract_paragraphs(file_path))
 
 
     @staticmethod
@@ -79,7 +79,7 @@ class DocExtractor:
             try:
                 # Pages with images are read by the OCR
                 if page.get_images(full=True):
-                    ocr_page_data = DocExtractor.ocr.extract_pdf_data(file_path, i)
+                    ocr_page_data = DocExtractor.ocr.extract_pdf_data(file_path, i).pages[0]
                     for block in ocr_page_data.blocks:
                         paragraph = OCR._convert_block_data_to_paragraph(block)
                         if paragraph.strip():
@@ -147,7 +147,7 @@ class DocExtractor:
     @staticmethod
     def _handle_rtf(file_path):
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
+            with open(file_path, 'r', errors='ignore') as file:
                 text = rtf_to_text(file.read())
                 return [(None, p) for p in DocExtractor._split_into_paragraphs(text)]
         except Exception as e:
@@ -157,7 +157,7 @@ class DocExtractor:
     @staticmethod
     def _handle_plain_text(file_path):
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, 'r', errors='ignore') as f:
                 text = f.read()
                 return [(None, p) for p in DocExtractor._split_into_paragraphs(text)]
         except Exception as e:
@@ -166,4 +166,4 @@ class DocExtractor:
 
     @staticmethod
     def _split_into_paragraphs(text):
-        return [p.strip() for p in re.split(r'(?:\r?\n\s*){2,}', text) if p.strip()]
+        return [p.strip() for p in re.split(r"(?:\r?\n\s*){2,}", text) if p.strip()]

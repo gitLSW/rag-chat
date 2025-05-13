@@ -1,7 +1,7 @@
 import json
 import logging
 from pymongo import MongoClient
-from get_env_var import get_env_var, MissingEnvVarError
+from utils import get_env_var, MissingEnvVarError
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class MongoDBConnector:
         view_name = f'access_view_{user_access_role}'
         if view_name not in company_db.list_collection_names():
             # TODO: log error: 
-            logger.critical(f'The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role with POST /accessGroups !')
+            logger.critical(f"The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role with POST /accessGroups !")
             return None, None
             
         try:

@@ -7,7 +7,7 @@ from doctr.models import ocr_predictor  # OCR = Optical Character Recognition, e
 TEXT_DETECTION_MODEL = 'fast_base'  # Model for detecting where text is on the page
 TEXT_RECOGNITION_MODEL = 'crnn_vgg16_bn'  # Model for recognizing characters within the detected text regions
 
-DEVICE = torch.device("cuda:0") # The OCR must run on a gpu or it will seg fault.
+DEVICE = torch.device('cuda:0') # The OCR must run on a gpu or it will seg fault.
 
 class OCR:
     def __init__(self):
@@ -35,7 +35,7 @@ class OCR:
         for line in block_data.lines:
             # Join words with spaces and strip trailing whitespace
             line_text = " ".join(word.value for word in line.words).rstrip()
-                        
+            
             # Remove trailing hyphen if present
             if line_text.endswith('-'):
                 line_text = line_text[:-1].rstrip()  # Remove hyphen and any remaining whitespace

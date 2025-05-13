@@ -1,185 +1,100 @@
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 import logging
 import json
 import aiohttp
 import jsonschema
-from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.exceptions import RequestValidationError
 from pymongo import errors as mongo_errors
 from chromadb import errors as chroma_errors
-from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
+def get_exc_message(exc, default_msg):
+    msg = str(exc)
+    return msg if msg else default_msg
 
-class ErrorHandlerMiddleware:
-    def __init__(self, app: FastAPI):
-        self.app = app
-        self._register_exception_handlers()
+def register_exception_handlers(app):
+    @app.exception_handler(FileNotFoundError)
+    async def file_not_found_handler(request: Request, exc: FileNotFoundError):
+        logger.warning(f"FileNotFoundError: {exc}")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": get_exc_message(exc, "Requested resource not found")})
 
-    def _register_exception_handlers(self):
-        self.app.add_exception_handler(HTTPException, self.http_exception_handler)
-        self.app.add_exception_handler(RequestValidationError, self.validation_exception_handler)
-        self.app.add_exception_handler(Exception, self.global_exception_handler)
+    @app.exception_handler(PermissionError)
+    async def permission_error_handler(request: Request, exc: PermissionError):
+        logger.error(f"PermissionError: {exc}")
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": get_exc_message(exc, "Permission denied for operation")})
 
-    async def http_exception_handler(self, request: Request, exc: HTTPException):
-        logger.warning(
-            f"HTTPException: {exc.status_code} - {exc.detail}",
-            extra={"path": request.url.path, "status_code": exc.status_code}
-        )
-        return HTTPException(
-            status_code=exc.status_code,
-            detail=exc.detail
-        )
+    @app.exception_handler(json.JSONDecodeError)
+    async def json_decode_error_handler(request: Request, exc: json.JSONDecodeError):
+        logger.warning(f"JSONDecodeError: {exc}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Invalid JSON data")})
 
-    async def validation_exception_handler(self, request: Request, exc: RequestValidationError):
-        logger.warning(
-            f"RequestValidationError: {str(exc)}",
-            extra={"path": request.url.path, "errors": exc.errors()}
-        )
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=exc.errors()
-        )
+    @app.exception_handler(OSError)
+    async def os_error_handler(request: Request, exc: OSError):
+        logger.error(f"OSError: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Filesystem operation failed")})
 
-    async def global_exception_handler(self, request: Request, exc: Exception):
-        return await self._handle_error(request, exc)
+    @app.exception_handler(mongo_errors.ConnectionFailure)
+    async def mongo_connection_failure_handler(request: Request, exc: mongo_errors.ConnectionFailure):
+        logger.critical(f"MongoDB ConnectionFailure: {exc}")
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": get_exc_message(exc, "Database connection failed")})
 
-    async def _handle_error(self, request: Request, exc: Exception):
-        if isinstance(exc, KeyError) and "env" in str(exc).lower():
-            raise exc
+    @app.exception_handler(mongo_errors.ServerSelectionTimeoutError)
+    async def mongo_server_selection_timeout_handler(request: Request, exc: mongo_errors.ServerSelectionTimeoutError):
+        logger.critical(f"MongoDB ServerSelectionTimeoutError: {exc}")
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": get_exc_message(exc, "Database connection timed out")})
 
-        error_info = self._classify_error(exc)
-        
-        logger.log(
-            error_info["log_level"],
-            f"{error_info['type']}: {str(exc)}",
-            exc_info=exc,
-            extra={
-                "path": request.url.path,
-                "method": request.method,
-                "error_type": error_info["type"],
-                "error_details": str(exc)
-            }
-        )
+    @app.exception_handler(mongo_errors.OperationFailure)
+    async def mongo_operation_failure_handler(request: Request, exc: mongo_errors.OperationFailure):
+        logger.error(f"MongoDB OperationFailure: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Database operation failed")})
 
-        return HTTPException(
-            status_code=error_info["status_code"],
-            detail=error_info["message"]
-        )
+    @app.exception_handler(mongo_errors.AutoReconnect)
+    async def mongo_auto_reconnect_handler(request: Request, exc: mongo_errors.AutoReconnect):
+        logger.warning(f"MongoDB AutoReconnect: {exc}")
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": get_exc_message(exc, "Temporary database issue - please retry")})
 
-    def _classify_error(self, exc: Exception) -> dict:
-        error_map = {
-            FileNotFoundError: {
-                "type": "FileNotFound",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_404_NOT_FOUND,
-                "message": "Requested resource not found"
-            },
-            PermissionError: {
-                "type": "PermissionDenied",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_403_FORBIDDEN,
-                "message": "Permission denied for operation"
-            },
-            json.JSONDecodeError: {
-                "type": "InvalidJSON",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": "Invalid JSON data"
-            },
-            OSError: {
-                "type": "FileSystemError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "Filesystem operation failed"
-            },
-            mongo_errors.ConnectionFailure: {
-                "type": "DatabaseConnectionError",
-                "log_level": logging.CRITICAL,
-                "status_code": status.HTTP_503_SERVICE_UNAVAILABLE,
-                "message": "Database connection failed"
-            },
-            mongo_errors.OperationFailure: {
-                "type": "DatabaseOperationError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "Database operation failed"
-            },
-            mongo_errors.AutoReconnect: {
-                "type": "DatabaseAutoReconnect",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_503_SERVICE_UNAVAILABLE,
-                "message": "Temporary database issue - please retry"
-            },
-            mongo_errors.DuplicateKeyError: {
-                "type": "DuplicateKeyError",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_409_CONFLICT,
-                "message": "Duplicate key violation"
-            },
-            chroma_errors.IDAlreadyExistsError: {
-                "type": "DuplicateIDError",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_409_CONFLICT,
-                "message": "Document ID already exists"
-            },
-            aiohttp.ClientError: {
-                "type": "HTTPClientError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_502_BAD_GATEWAY,
-                "message": "External service communication failed"
-            },
-            jsonschema.exceptions.ValidationError: {
-                "type": "SchemaValidationError",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "message": "Data validation failed"
-            },
-            ValueError: {
-                "type": "ValueError",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": "Invalid input value"
-            },
-            TypeError: {
-                "type": "TypeError",
-                "log_level": logging.WARNING,
-                "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": "Invalid input type"
-            },
-            MemoryError: {
-                "type": "MemoryError",
-                "log_level": logging.CRITICAL,
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "System resource limit reached"
-            },
-            RuntimeError: {
-                "type": "RuntimeError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "Unexpected runtime error"
-            },
-            Exception: {
-                "type": "UnexpectedError",
-                "log_level": logging.ERROR,
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "An unexpected error occurred"
-            }
-        }
+    @app.exception_handler(mongo_errors.DuplicateKeyError)
+    async def mongo_duplicate_key_error_handler(request: Request, exc: mongo_errors.DuplicateKeyError):
+        logger.warning(f"MongoDB DuplicateKeyError: {exc}")
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": get_exc_message(exc, "Duplicate key violation")})
 
-        for error_class, info in error_map.items():
-            if isinstance(exc, error_class):
-                return info
-        return error_map[Exception]
+    @app.exception_handler(chroma_errors.IDAlreadyExistsError)
+    async def chroma_id_already_exists_handler(request: Request, exc: chroma_errors.IDAlreadyExistsError):
+        logger.warning(f"ChromaDB IDAlreadyExistsError: {exc}")
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": get_exc_message(exc, "Document ID already exists")})
 
+    @app.exception_handler(aiohttp.ClientError)
+    async def aiohttp_client_error_handler(request: Request, exc: aiohttp.ClientError):
+        logger.error(f"Aiohttp ClientError: {exc}")
+        return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": get_exc_message(exc, "External service communication failed")})
 
-class ErrorHandlingMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, error_handler: ErrorHandlerMiddleware):
-        super().__init__(app)
-        self.error_handler = error_handler
+    @app.exception_handler(jsonschema.exceptions.ValidationError)
+    async def jsonschema_validation_error_handler(request: Request, exc: jsonschema.exceptions.ValidationError):
+        logger.warning(f"JSONSchema ValidationError: {exc}")
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": get_exc_message(exc, "Data validation failed")})
 
-    async def dispatch(self, request: Request, call_next):
-        try:
-            return await call_next(request)
-        except Exception as exc:
-            return await self.error_handler._handle_error(request, exc)
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError):
+        logger.warning(f"ValueError: {exc}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Invalid input value")})
+
+    @app.exception_handler(TypeError)
+    async def type_error_handler(request: Request, exc: TypeError):
+        logger.warning(f"TypeError: {exc}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Invalid input type")})
+
+    @app.exception_handler(MemoryError)
+    async def memory_error_handler(request: Request, exc: MemoryError):
+        logger.critical(f"MemoryError: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "System resource limit reached")})
+
+    @app.exception_handler(RuntimeError)
+    async def runtime_error_handler(request: Request, exc: RuntimeError):
+        logger.error(f"RuntimeError: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Unexpected runtime error")})
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception):
+        logger.error(f"Unhandled Exception: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "An unexpected error occurred")})

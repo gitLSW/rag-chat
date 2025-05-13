@@ -3,12 +3,12 @@ from fastapi.responses import JSONResponse
 
 
 class OKResponse(JSONResponse):
-    def __init__(self, detail='Success', data=None):
+    def __init__(self, detail="Success", data=None):
         self.data = data
         self.detail = detail
         super().__init__(status_code=200, content={
-            "detail": detail,
-            "data": data
+            'detail': detail,
+            'data': data
         })
 
 class DocumentNotFoundError(HTTPException):
@@ -18,6 +18,6 @@ class DocumentNotFoundError(HTTPException):
 
 
 class InsufficientAccessError(HTTPException):
-    def __init__(self, user_access_role, detail='Insufficient access rights, permission denied'):
+    def __init__(self, user_access_role, detail="Insufficient access rights, permission denied"):
         super().__init__(status_code=403, detail=detail)
         self.user_access_role = user_access_role

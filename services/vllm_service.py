@@ -2,7 +2,7 @@ import uuid
 import asyncio
 from dataclasses import dataclass, field
 from typing import List, Deque, Dict, AsyncGenerator, Optional
-from get_env_var import get_env_var
+from utils import get_env_var
 from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer, AutoConfig
 from collections import defaultdict, deque
@@ -16,11 +16,11 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 #     # Model parameters (https://docs.vllm.ai/en/latest/api/offline_inference/llm.html)
 #     model=LLM_MODEL,  # Default model name or path
 #         # tokenizer=None,  # Defaults to the model's tokenizer
-#         # tokenizer_mode="auto",  # Automatically selects the tokenizer mode
+#         # tokenizer_mode='auto',  # Automatically selects the tokenizer mode
 #     trust_remote_code=False,  # Does not trust remote code execution by default
 #         # download_dir=None,  # Uses the default download directory
-#         # load_format="auto",  # Automatically detects the model's weight format
-#         # dtype="auto",  # Determines the appropriate data type automatically
+#         # load_format='auto',  # Automatically detects the model's weight format
+#         # dtype='auto',  # Determines the appropriate data type automatically
 #     # quantization=None,  # No quantization method applied by default
 #         # enforce_eager=False,  # Allows the use of CUDA graphs for execution
 #         # max_seq_len_to_capture=8192,  # Maximum sequence length for CUDA graph capture
@@ -35,19 +35,19 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 #         # compilation_config=0,  # Default torch.compile optimization level
 
 #     # Additional engine arguments (https://docs.vllm.ai/en/latest/serving/engine_args.html#engine-args)
-#     task="generate",  # Automatically selects the task based on the model
+#     task='generate',  # Automatically selects the task based on the model
 #         # hf_config_path=None,  # Defaults to the model's configuration path
 #         # skip_tokenizer_init=False,  # Initializes the tokenizer by default
 #         # revision=None,  # Uses the default model version
 #         # code_revision=None,  # Uses the default code revision
 #         # tokenizer_revision=None,  # Uses the default tokenizer revision
 #         # allowed_local_media_path=None,  # No local media paths allowed by default
-#         # config_format="auto",  # Automatically detects the model's config format
-#         # kv_cache_dtype="auto",  # Uses the model's data type for KV cache
+#         # config_format='auto',  # Automatically detects the model's config format
+#         # kv_cache_dtype='auto',  # Uses the model's data type for KV cache
 #     # max_model_len=512,  # Automatically derived from the model config - default: None
-#         # guided_decoding_backend="xgrammar",  # Default guided decoding backend
+#         # guided_decoding_backend='xgrammar',  # Default guided decoding backend
 #         # logits_processor_pattern=None,  # No logits processor pattern specified
-#         # model_impl="auto",  # Automatically selects the model implementation
+#         # model_impl='auto',  # Automatically selects the model implementation
 #         # distributed_executor_backend=None,  # Defaults based on parallel sizes and GPU availability
 #         # pipeline_parallel_size=1,  # Single pipeline stage
 #     # tensor_parallel_size=1,  # Split LLM Layer computations horizontally across N GPUs
@@ -56,7 +56,7 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 #         # max_parallel_loading_workers=None,  # No specific limit on parallel loading workers
 #         # ray_workers_use_nsight=False,  # Nsight profiling for Ray workers disabled
 #         # enable_prefix_caching=False,  # Prefix caching disabled by default
-#         # prefix_caching_hash_algo="builtin",  # Default hash algorithm for prefix caching
+#         # prefix_caching_hash_algo='builtin',  # Default hash algorithm for prefix caching
 #         # disable_sliding_window=False,  # Sliding window enabled by default
 #         # use_v2_block_manager=False,  # Deprecated; no effect on behavior
 #         # num_lookahead_slots=0,  # No lookahead slots by default
@@ -70,7 +70,7 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 #         # rope_scaling=None,  # No RoPE scaling configuration specified
 #         # rope_theta=None,  # No RoPE theta specified
 #         # tokenizer_pool_size=0,  # Synchronous tokenization by default
-#         # tokenizer_pool_type="ray",  # Default tokenizer pool type
+#         # tokenizer_pool_type='ray',  # Default tokenizer pool type
 #         # tokenizer_pool_extra_config=None,  # No extra config for tokenizer pool
 #         # limit_mm_per_prompt=None,  # Defaults to 1 for each multimodal input
 #         # mm_processor_kwargs=None,  # No overrides for multimodal processing
@@ -80,14 +80,14 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 #         # max_loras=1,  # Maximum of 1 LoRA in a single batch
 #         # max_lora_rank=16,  # Maximum LoRA rank
 #         # lora_extra_vocab_size=256,  # Extra vocabulary size for LoRA adapters
-#         # lora_dtype="auto",  # LoRA data type defaults to base model dtype
+#         # lora_dtype='auto',  # LoRA data type defaults to base model dtype
 #         # long_lora_scaling_factors=None,  # No specific scaling factors for Long LoRA
 #         # max_cpu_loras=None,  # No specific limit on CPU-stored LoRAs
 #         # fully_sharded_loras=False,  # Partial sharding for LoRA computation
 #         # enable_prompt_adapter=False,  # PromptAdapters handling disabled by default
 #         # max_prompt_adapters=1,  # Maximum of 1 PromptAdapter in a batch
 #         # max_prompt_adapter_token=0,  # No tokens allocated for PromptAdapters
-#         # device="auto",  # Automatically selects the device for execution
+#         # device='auto',  # Automatically selects the device for execution
 #         # num_scheduler_steps=1,  # Single forward step per scheduler call
 #         # use_tqdm_on_load=True,  # Progress bar enabled when loading model weights
 #         # multi_step_stream_outputs=True,  # Streams outputs at the end of all steps
@@ -115,7 +115,7 @@ llm = LLMDummy()
 
 tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
 llm_config = AutoConfig.from_pretrained(LLM_MODEL)
-llm_max_text_len = getattr(llm_config, "max_position_embeddings", tokenizer.model_max_length)
+llm_max_text_len = getattr(llm_config, 'max_position_embeddings', tokenizer.model_max_length)
 
 @dataclass
 class RequestState:
@@ -234,10 +234,10 @@ class LLMService:
 
     def _get_chunks(self, prompt, context, history, allow_chunking):
         # Tokenize prompt and optional context
-        prompt_ids = tokenizer.encode('\n\n' + prompt, add_special_tokens=False)
+        prompt_ids = tokenizer.encode("\n\n" + prompt, add_special_tokens=False)
         
         if llm_max_text_len < len(prompt_ids):
-            raise ValueError('Prompt is too long for LLM context frame')
+            raise ValueError("Prompt is too long for LLM context frame")
         
         context_ids = ((tokenizer.encode(history, add_special_tokens=False) if history else []) +
                        (tokenizer.encode(context, add_special_tokens=False) if context else []))
@@ -246,10 +246,10 @@ class LLMService:
         quarter_frame = llm_max_text_len // 4
         if llm_max_text_len < len(prompt_ids) + len(context_ids): # chunking occurrs
             if quarter_frame < len(prompt_ids):
-                raise ValueError('Prompt is too long for LLM context frame. Allow chunking or disable using chat history or document search')
+                raise ValueError("Prompt is too long for LLM context frame. Allow chunking or disable using chat history or document search")
             
             if not allow_chunking:
-                raise ValueError('Prompt and context are too long and chunking was disallowed')
+                raise ValueError("Prompt and context are too long and chunking was disallowed")
         else: # Everything fits in one chunk, no chunking needed
             return [context_ids + prompt_ids]
             

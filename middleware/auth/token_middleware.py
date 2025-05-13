@@ -5,9 +5,8 @@ from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from services.access_manager import get_access_manager
-from get_env_var import get_env_var
+from utils import get_env_var
 
-# PUBLIC_ROUTES = ["/route"]
 IS_PROD_ENV = get_env_var('IS_PROD_ENV')
 if not IS_PROD_ENV:
     JWT_PUBLIC_KEY = get_env_var('JWT_PUBLIC_KEY')
