@@ -95,7 +95,7 @@ class LLMChat:
                                 MongoDB response: {json.dumps(db_response, indent=2)}"""
             elif entry.rag_search_depth:
                 docs_data = self.rag_service.find_docs(entry.message, entry.rag_search_depth)
-                doc_summaries, _, doc_sources_map = self._summarize_docs(docs_data, entry.message)
+                doc_summaries, doc_sources_map = self._summarize_docs(docs_data, entry.message)
                 doc_sources_summary = "\n\n".join(doc_summaries)
                 prompt += "These texts might be relevant to the previous message:"
 
@@ -178,16 +178,12 @@ class LLMChat:
 
             return re.sub(r"<think>.*?</think>", "", summary, flags=re.DOTALL)
 
-        doc_types = set()
         doc_sources_map = defaultdict(set)
         summarize_tasks = []
         
         for doc_data in docs_data:
             doc_id = doc_data['docId']
             page_num = doc_data['pageNum']
-            doc_type = doc_data.get('docType')
-            if doc_type:
-                doc_types.add(doc_type)
     
             if page_num:
                 doc_sources_map[doc_id].add(page_num)
@@ -219,7 +215,7 @@ class LLMChat:
     
         # Run all LLM summaries concurrently
         doc_summaries = await asyncio.gather(*summarize_tasks)
-        return doc_summaries, doc_types, doc_sources_map
+        return doc_summaries, doc_sources_map
     
     
     # -----------------------------

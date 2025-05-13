@@ -152,18 +152,13 @@ class RAGService:
         doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
         
-        if doc_schema:
+        if is_extract_valid:
             # Build final schema
             doc_schema = self._merge_with_base_schema(doc_schema)
-            
-            if is_extract_valid:
-                # Overwrite extracted data with uploaded data
-                doc_data = { **extracted_doc_data, **doc_data }
-        elif doc_type:
-            # If a doc_type was defined, but no schema exists for it, raise an error
-            raise HTTPException(422, f"No JSON schema was found for docType '{doc_type}'. Register a schema for it with POST /documentSchemata")
+            # Overwrite extracted data with uploaded data
+            doc_data = { **extracted_doc_data, **doc_data }
         else:
-            doc_type = None
+            doc_type = None # If no doc_schema was found, we 
             doc_schema = BASE_DOC_SCHEMA
         
         doc_data['docType'] = doc_type
@@ -182,8 +177,7 @@ class RAGService:
             # Store the paragraph's metadata in the vector DB using its embedding
             paragraph_data = {
                 'docId': doc_id,
-                'pageNum': page_num,
-                'docType': doc_type
+                'pageNum': page_num
             }
             self.vector_db.upsert(
                 embeddings=[block_embedding.tolist()],
