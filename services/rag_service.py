@@ -162,8 +162,12 @@ class RAGService:
             doc_schema = self._merge_with_base_schema(doc_schema)
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
+        elif doc_type:
+            if not doc_schema:
+                raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
+            doc_schema = self._merge_with_base_schema(doc_schema)
         else:
-            doc_type = None # If no doc_schema was found, we 
+            doc_type = None # If no doc_schema was found
             doc_schema = BASE_DOC_SCHEMA
         
         doc_data['docType'] = doc_type
