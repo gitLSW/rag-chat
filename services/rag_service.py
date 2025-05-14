@@ -136,6 +136,15 @@ class RAGService:
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f"Doc {doc_id} already exists and override was disallowed !")
         
+        doc_type = doc_data.get('docType')
+        if doc_type:
+            doc_schema = self.doc_schemata.get(doc_type)
+            if not doc_schema:
+                raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
+            doc_schema = self._merge_with_base_schema(doc_schema)
+        else:
+            doc_schema = BASE_DOC_SCHEMA
+
         # Validate user access
         try:
             self.access_manager.has_doc_access(doc_id, user_access_role)
@@ -154,7 +163,6 @@ class RAGService:
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + file_name
 
         # Extract JSON
-        doc_type = doc_data.get('docType')
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
         
         if is_extract_valid:
@@ -162,13 +170,6 @@ class RAGService:
             doc_schema = self._merge_with_base_schema(doc_schema)
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
-        elif doc_type:
-            if not doc_schema:
-                raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
-            doc_schema = self._merge_with_base_schema(doc_schema)
-        else:
-            doc_type = None # If no doc_schema was found
-            doc_schema = BASE_DOC_SCHEMA
         
         doc_data['docType'] = doc_type
         
