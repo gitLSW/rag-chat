@@ -96,54 +96,44 @@ Finally, the document's text content gets saved as a txt file.
 #### `POST /documents`
 - **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If the automatic JSON extract failed for a given doc_type, the plain document text and paragraph embeddings will still be saved, but its response will return null for doc_type.
 - **Request Schema**:
+
+`Form Table`:
+
+| Field Name     | Type          | Description                                               | Required | Notes                         |
+|----------------|---------------|-----------------------------------------------------------|----------|-------------------------------|
+| file           | File (binary) | The document file to upload                               | ✅       | Must be a valid file          |
+| forceOCR       | Boolean       | Use OCR to extract text only                              | ❌       | Only works with PDFs          |
+| allowOverride  | Boolean       | Allow overriding an existing document                     | ❌       | Defaults to true              |
+| docData        | JSON string   | Metadata object for the document                          | ✅       | Must be a stringified JSON    |
+
+`docData`:
 ```json
 {
   "type": "object",
   "properties": {
-    "file": {
+    "id": {
       "type": "string",
-      "format": "binary",
-      "description": "The document file to upload"
+      "description": "Unique identifier for the document"
     },
-    "forceOCR": {
-      "type": "boolean",
-      "description": "Use the OCR only to extract text. The file must be a PDF for the OCR to work.",
-      "default": false
+    "path": {
+      "type": ["string", "null"],
+      "description": "Optional path for organizing documents"
     },
-    "allowOverride": {
-      "type": "boolean",
-      "description": "Whether to allow overriding an existing document",
-      "default": true
+    "docType": {
+      "type": ["string", "null"],
+      "description": "Document type that matches a predefined schema"
     },
-    "docData": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the document"
-        },
-        "path": {
-          "type": ["string", "null"],
-          "description": "Optional path for organizing documents"
-        },
-        "docType": {
-          "type": ["string", "null"],
-          "description": "Document type that matches a predefined schema"
-        },
-        "accessGroups": {
-          "type": "array",
-          "items": {"type": "string"},
-          "minItems": 1,
-          "description": "List of groups with access to this document"
-        }
-      },
-      "required": ["id", "accessGroups"],
-      "additionalProperties": {
-        "description": "Additional properties must match the schema defined for the docType"
-      }
+    "accessGroups": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1,
+      "description": "List of groups with access to this document"
     }
   },
-  "required": ["file", "docData"]
+  "required": ["id", "accessGroups"],
+  "additionalProperties": {
+    "description": "Additional properties must match the schema defined for the docType"
+  }
 }
 ```
 - **Response Schema**: Success/Failure response with whe added document's metadata
