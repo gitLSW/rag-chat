@@ -94,7 +94,7 @@ If it passed, it will be added to the document database (`MongoDB`).
 Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
-- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If the automatic JSON extract failed for a given doc_type, the plain document text and paragraph embeddings will still be saved, but its response will return null for doc_type.
+- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If the automatic JSON extract failed for a given doc_type, the provides metadat, plain document text and paragraph embeddings will still be saved.
 - **Request Schema**:
 
 `Form Table`:
