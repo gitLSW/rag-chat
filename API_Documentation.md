@@ -13,7 +13,7 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
   "userRole": USER_ACCSESS_GROUP
 }
 ```
-The public key will automatically retreived from the Auth server's URL, which needs to be specified in the .env file.
+The public key will be retreived automatically from the Auth server's URL, which needs to be specified in the .env file.
 
 
 
