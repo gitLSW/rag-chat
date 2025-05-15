@@ -4,7 +4,7 @@
 - **API Key**: `x-api-key API_KEY`\
 Every endpoint (except `/chat`) requires an API key in each request header and the request source must prevously be whitelisted.
 - **Bearer Token**: `Bearer BEARER_TOKEN`\
-All endpoints require a Bearer Token authentication in every request header.
+All endpoints require a RSA256 encrypted Bearer Token (in .pem file format) authentication in every request header.
 The Bearer Token must be generated with `jsonwebtoken` and its payload must encode:
 ```json
 {
