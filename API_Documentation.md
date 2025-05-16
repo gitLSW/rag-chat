@@ -10,7 +10,7 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
 {
   "companyId": USER_COMPANY_IDENTIFIER,
   "userId": USER_IDENTIFIER,
-  "userRole": USER_ACCSESS_GROUP
+  "userRoles": USER_ACCSESS_GROUPS
 }
 ```
 The public key will be retreived automatically from the Auth server's URL, which needs to be specified in the .env file.

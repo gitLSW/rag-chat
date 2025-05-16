@@ -15,13 +15,13 @@ class MongoDBConnector:
         self.company_id = company_id
         
 
-    def run(self, json_cmd, user_access_role):
+    def run(self, json_cmd, user_access_roles):
         """
         Execute a MongoDB command with proper access role restrictions.
         
         Args:
             json_cmd (dict): The MongoDB command in JSON format
-            user_access_role (str): The access role of the current user
+            user_access_roles (List[str]): The access roles of the current user
             
         Returns:
             The result of the MongoDB command if the execution was successful else None.
@@ -32,10 +32,10 @@ class MongoDBConnector:
             except json.JSONDecodeError as e:
                 # Invalid json_cmd
                 return None, None
-        
+
         try:
             # Construct credentials
-            username = f'llm_user_{self.company_id}_{user_access_role}'
+            username = f'llm_user_{self.company_id}'
             password = get_env_var(f'LLM_USER_{self.company_id}_PW')
             
             # Connect to MongoDB
@@ -53,17 +53,10 @@ class MongoDBConnector:
             return None, None
         
         company_db = client[self.company_id]
-        
-        # Determine the appropriate view to query
-        view_name = f'access_view_{user_access_role}'
-        if view_name not in company_db.list_collection_names():
-            # TODO: log error: 
-            logger.critical(f"The no mongoDB view found for user role {user_access_role}. System integrety comprmised, manually reregister access role with POST /accessGroups !")
-            return None, None
             
         try:
             # Modify the command to use the view instead of base collection
-            modified_cmd = self._rewrite_command(json_cmd, view_name)
+            modified_cmd = self._rewrite_command(json_cmd, user_access_roles)
             
             # Execute the command
             return modified_cmd, company_db.command(modified_cmd)
@@ -72,7 +65,7 @@ class MongoDBConnector:
             return None, None
 
 
-    def _rewrite_command(self, original_cmd, view_name):
+    def _rewrite_command(self, original_cmd, user_access_roles):
         """
         Minimal command rewriter that handles:
         - find, aggregate, count, distinct, and mapReduce
@@ -87,18 +80,34 @@ class MongoDBConnector:
         # Find first matching operation
         for op in READ_OPS:
             if op in cmd:
-                # Replace collection name if it's a direct string reference
-                if isinstance(cmd[op], str):
-                    cmd[op] = view_name
-                
-                # Special handling for aggregate pipelines with $lookup
                 if op == 'aggregate' and 'pipeline' in cmd:
-                    self._rewrite_pipeline_collections(cmd['pipeline'], view_name)
-                
+                    # Inject access control filter at the top level
+                    cmd['pipeline'] = self._inject_access_filter_pipeline(cmd['pipeline'], user_access_roles)
+
+                    # Inject access control inside $lookup stages
+                    self._rewrite_pipeline_collections(cmd['pipeline'], user_access_roles)
+
+                elif op == 'find':
+                    cmd['filter'] = self._inject_access_filter_find(cmd.get('filter', {}), user_access_roles)
+
                 return cmd
-        
+
         raise ValueError(f"Unsupported operation. Allowed: {READ_OPS}")
-    
+
+
+    def _inject_access_filter_pipeline(self, pipeline, user_access_roles):
+        # Inject $match filter based on access roles at the beginning
+        access_filter = {"accessGroup": {"$in": user_access_roles}}
+        return [{"$match": access_filter}] + pipeline
+
+
+    def _inject_access_filter_find(self, existing_filter, user_access_roles):
+        access_filter = {"accessGroup": {"$in": user_access_roles}}
+        if existing_filter:
+            return {"$and": [existing_filter, access_filter]}
+        return access_filter
+
+
     
     def _rewrite_pipeline_collections(self, pipeline, view_name):
         """Handle collection references in aggregation pipelines"""

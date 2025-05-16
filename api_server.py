@@ -87,19 +87,19 @@ app.include_router(chat_ws_router) # Add /chat endpoint
 @app.post("/accessGroups")
 async def create_access_group(req: CreateAccessGroupReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.access_manager.create_access_group(req.accessGroup, req.state.user_access_role)
+    return rag_service.access_manager.create_access_group(req.accessGroup, req.state.user_roles)
 
 
 @app.post("/documentSchemata")
 async def add_doc_schema(req: AddDocSchemaReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_access_role)
+    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_roles)
 
 
 @app.delete("/documentSchemata/{doc_type}")
 async def delete_doc_schema(doc_type, req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.delete_json_schema_type(doc_type, req.state.user_access_role)
+    return rag_service.delete_json_schema_type(doc_type, req.state.user_roles)
 
 
 @app.post("/documents")
@@ -169,26 +169,26 @@ async def update_doc(doc_id, req: UpdateDocReq):
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user_role)
+    return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user_roles)
 
 
 @app.get("/documents/{doc_id}")
 async def get_doc(doc_id, req):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.get_doc(doc_id, req.state.user_access_role)
+    return rag_service.get_doc(doc_id, req.state.user_roles)
 
 
 @app.delete("/documents/{doc_id}")
 async def delete_doc(doc_id, req):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.delete_doc(doc_id, req.state.user_role)
+    return rag_service.delete_doc(doc_id, req.state.user_roles)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
 @app.get("/search")
 async def search_docs(req: SemanticSearchReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.find_docs(req.question, req.search_depth, req.state.user_role)
+    return rag_service.find_docs(req.question, req.search_depth, req.state.user_roles)
 
 
 # main.py

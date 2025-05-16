@@ -29,11 +29,11 @@ class ChatEntry:
 
 class LLMChat:
     
-    def __init__(self, user_id, company_id, user_access_role):
+    def __init__(self, user_id, company_id, user_access_roles):
         self.user_id = user_id
         self.chat_id = str(uuid.uuid4())
         self.company_id = company_id
-        self.user_access_role = user_access_role
+        self.user_access_roles = user_access_roles
 
         self.llm_service = LLMService()
         self.rag_service = get_company_rag_service(company_id)
@@ -252,7 +252,7 @@ class LLMChat:
                     self.mongo_db_connector = MongoDBConnector(self.company_id)
 
                 # Execute MongoDB query
-                return self.mongo_db_connector.run(mongo_query, self.user_access_role)
+                return self.mongo_db_connector.run(mongo_query, self.user_access_roles)
 
             return None, None
         

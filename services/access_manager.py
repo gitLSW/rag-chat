@@ -28,43 +28,29 @@ class AccessManager:
                 self.valid_access_groups = file_data['access_groups']
 
 
-    def create_access_group(self, access_group, user_access_role):
+    def create_access_group(self, access_group, user_access_roles):
         """
         Creates an LLM user with restricted access to a company-specific view.
         
         Args:
             access_role: The access role level (determines which view they can access)
         """
-        if user_access_role != 'admin':
-            raise InsufficientAccessError(user_access_role, "Insufficient access rights, permission denied. Admin rights required")
-        
-        # Create view that filters documents where the user's role is in access_groups
-        view_name = f'access_view_{access_group}'
-        company_db = self.db_client[self.company_id]
-        if view_name not in company_db.list_collection_names():
-                company_db.command({
-                    'create': view_name,
-                    'viewOn': 'docs',
-                    'pipeline': [{
-                        '$match': {
-                            'accessGroups': { '$in': [access_group] }
-                        }
-                    }]
-                })
-
-        # Configuration
-        username = f'llm_user_{self.company_id}_{access_group}'
-        password = get_env_var(f'LLM_USER_{self.company_id}_PW')
-
-        self.db_client['admin'].command({
-            'createUser': username,
-            'pwd': password,
-            'roles': [{
-                'role': 'read',
-                'db': self.company_id,
-                'collection': view_name
-            }]
-        })
+        if not 'admin' in user_access_roles:
+            raise InsufficientAccessError(user_access_roles, "Insufficient access rights, permission denied. Admin rights required")
+    
+        # Create LLM user
+        username = f'llm_user_{self.company_id}'
+        if not self.user_exists(username):
+            password = get_env_var(f'LLM_USER_{self.company_id}_PW')
+            self.db_client['admin'].command({
+                'createUser': username,
+                'pwd': password,
+                'roles': [{
+                    'role': 'read',
+                    'db': self.company_id,
+                    'collection': 'docs'
+                }]
+            })
 
         lock = FileLock(self.access_data_path)
         with lock:
@@ -77,13 +63,22 @@ class AccessManager:
         return OKResponse(f"Successfully added {access_group}")
 
 
-    def has_doc_access(self, doc_id, user_access_role):
+    def user_exists(self, username):
+        try:
+            result = self.db_client[self.company_id].command("usersInfo", {"user": username, "db": self.company_id})
+            return len(result.get("users", [])) > 0
+        except Exception as e:
+            print(f"Error checking user: {e}")
+            return False
+
+
+    def has_doc_access(self, doc_id, user_access_roles):
         doc = self.db_client[self.company_id]['docs'].find_one({ '_id': doc_id })
         if not doc:
             raise DocumentNotFoundError(doc_id)
         
-        if not user_access_role in doc['accessGroups']:
-            raise InsufficientAccessError(user_access_role)
+        if not any(user_access_role in doc['accessGroups'] for user_access_role in user_access_roles):
+            raise InsufficientAccessError(user_access_roles)
         
         return doc
     

@@ -63,17 +63,18 @@ class TokenMiddleware(BaseHTTPMiddleware):
         if not user_id:
             raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userId.")
 
-        user_role = payload.get("userRole")
-        if not user_role:
-            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userRole.")
+        user_roles = payload.get("userRoles")
+        if not user_roles:
+            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userRoles.")
         
         access_manager = get_access_manager(company_id)
-        if not user_role in access_manager.valid_access_groups:
-            raise HTTPException(400, f"Unknown user_role {user_role}. Register it with POST /accessGroups first.")
+        for user_role in user_roles:
+            if not user_role in access_manager.valid_access_groups:
+                raise HTTPException(400, f"Unknown user role '{user_role}'. Register it with POST /accessGroups first.")
 
         req.state.company_id = company_id
         req.state.user_id = user_id
-        req.state.user_role = user_role
+        req.state.user_roles = user_roles
 
         return await call_next(req)
 
