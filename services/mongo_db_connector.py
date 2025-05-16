@@ -109,21 +109,46 @@ class MongoDBConnector:
 
 
     
-    def _rewrite_pipeline_collections(self, pipeline, view_name):
-        """Handle collection references in aggregation pipelines"""
+    def _rewrite_pipeline_collections(self, pipeline, user_access_roles):
+        """Inject accessGroup filter into $lookup pipeline stages"""
         if not isinstance(pipeline, list):
             return
-        
+    
         for stage in pipeline:
             if not isinstance(stage, dict):
                 continue
-            
-            # Rewrite $lookup/$graphLookup collection references
-            for lookup_op in ('$lookup', '$graphLookup'):
-                if lookup_op in stage and isinstance(stage[lookup_op].get('from'), str):
-                    stage[lookup_op]['from'] = view_name
     
+            if '$lookup' in stage:
+                lookup = stage['$lookup']
     
+                # Only rewrite if 'from' is a string and no 'pipeline' exists
+                if isinstance(lookup.get('from'), str) and 'pipeline' not in lookup:
+                    local_field = lookup.get('localField')
+                    foreign_field = lookup.get('foreignField')
+                    if local_field and foreign_field:
+                        stage['$lookup'] = {
+                            'from': lookup['from'],
+                            'let': {f'lf': f'${local_field}'},
+                            'pipeline': [
+                                {
+                                    '$match': {
+                                        '$expr': {'$eq': [f'${foreign_field}', '$$lf']},
+                                        'accessGroup': {'$in': user_access_roles}
+                                    }
+                                }
+                            ],
+                            'as': lookup['as']
+                        }
+    
+                # If already using a pipeline, we can inject access control directly
+                elif 'pipeline' in lookup:
+                    lookup['pipeline'].insert(0, {
+                        '$match': {
+                            'accessGroup': {'$in': user_access_roles}
+                        }
+                    })
+
+
     def close(self):
         """Close the MongoDB connection."""
         self.client.close()
