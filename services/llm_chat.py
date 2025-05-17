@@ -126,8 +126,8 @@ class LLMChat:
             'message': self.message,
             'time': self.time,
             'answer': self.answer,
-            'userID': self.user_id,
-            'chatID': self.chat_id
+            'userId': self.user_id,
+            'chatId': self.chat_id
         })
         self.abort()
 
@@ -295,8 +295,8 @@ class LLMChat:
 
     def get_chat_messages(self):
         return self.messages_db.find({
-            'chatID': self.chat_id,
-            'userID': self.user_id
+            'chatId': self.chat_id,
+            'userId': self.user_id
         })
 
 

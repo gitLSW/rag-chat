@@ -4,12 +4,12 @@ import uuid
 import json
 import logging
 from utils import get_env_var, get_company_path
-# from typing import List, Optional
+from typing import List
 
 from mimetypes import guess_type
 
 from fastapi import FastAPI, Request, Form, HTTPException, File, UploadFile, WebSocket
-from pydantic import BaseModel
+from pydantic import BaseModel, conlist
 
 from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
@@ -46,9 +46,6 @@ class SemanticSearchReq(BaseModel):
     question: str
     searchDepth: int = 10
 
-class CreateAccessGroupReq(BaseModel):
-    accessGroup: str
-
 class AddDocSchemaReq(BaseModel):
     docType: str
     docSchema: dict # JSON Schema
@@ -84,10 +81,18 @@ app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
 app.include_router(chat_ws_router) # Add /chat endpoint
 
 
-@app.post("/accessGroups")
-async def create_access_group(req: CreateAccessGroupReq):
+@app.post("/users/{user_id}")
+async def create_access_group(user_id, req: Request):
+    user_data = await req.json()
+
+    body_user_id = req.docData.get("id")
+    if not body_user_id:
+        user_data["id"] = user_id
+    elif body_user_id != user_id:
+        raise HTTPException(400, "URL document id doesn't match request body's document id!")
+    
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.access_manager.create_access_group(req.accessGroup, req.state.user_roles)
+    return rag_service.access_manager.create_update_user(user_data, req.state.user_roles)
 
 
 @app.post("/documentSchemata")

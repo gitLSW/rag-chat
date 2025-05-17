@@ -20,25 +20,28 @@ The public key will be retreived automatically from the Auth server's URL, which
 ## Endpoints
 
 ### Access groups
-Access Groups for each company must be registered previous to using them.
+Access groups for each company must be used by at least one user previous to using them.
 Every document has a list of accessGroups associated with it.
 Administrator roles are always added automatically by the system.
 They are named `admin` in the System. 
 
-#### `POST /accessGroups`
-- **Purpose**: Creates a new access group for document permissions.
+#### `POST /users/{user_id}`
+- **Purpose**: Creates or updates a user with access groups for document permissions.
 - **Access Control**: Requires `admin` role
 - **Request Schema**:
 ```json
 {
-  "type": "object",
-  "properties": {
-    "accessGroup": {
-      "type": "string",
-      "description": "The name/identifier of the access group to create"
-    }
-  },
-  "required": ["accessGroup"]
+    "type": "object",
+    "properties": {
+        "userId": { "type": "string" },
+        "userRoles": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+        }
+    },
+    "required": ["userRoles"],
+    "additionalProperties": False
 }
 ```
 - **Response Schema**: Success/Failure Response
