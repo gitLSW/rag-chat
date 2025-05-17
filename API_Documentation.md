@@ -25,7 +25,7 @@ Every document has a list of accessGroups associated with it.
 Administrator roles are always added automatically by the system.
 They are named `admin` in the System. 
 
-#### `POST /users/{user_id}`
+#### `POST /users/{new_user_id}`
 - **Purpose**: Creates or updates a user with access groups for document permissions.
 - **Access Control**: Requires `admin` role
 - **Request Schema**:
