@@ -35,7 +35,7 @@ BASE_DOC_SCHEMA = {
         'path': {'type': 'string'},
         'docType': {'type': ['string', 'null']},
         'accessGroups': {
-            'type': 'array',
+            'type': ['array', 'null'],
             'items': {'type': 'string'},
             'minItems': 1
         }
@@ -78,9 +78,8 @@ class RAGService:
         self.docs_db = client[company_id]['docs']
 
 
-    def add_json_schema_type(self, doc_type, json_schema, user_access_roles):
-        if not 'admin' in user_access_roles:
-            raise InsufficientAccessError(user_access_roles, "Insufficient access rights, permission denied. Admin rights required")
+    def add_json_schema_type(self, doc_type, json_schema, user):
+        user.assert_admin()
         
         if doc_type in self.doc_schemata.keys():
             raise HTTPException(409, f"The document type {doc_type}, is already used by another JSON schema.")
@@ -108,9 +107,8 @@ class RAGService:
         return OKResponse(f"Successfully added new JSON schema for {doc_type}", json_schema)
 
 
-    def delete_json_schema_type(self, doc_type, user_access_roles):
-        if not 'admin' in user_access_roles:
-            raise InsufficientAccessError(user_access_roles, "Insufficient access rights, permission denied. Admin rights required")
+    def delete_json_schema_type(self, doc_type, user):
+        user.assert_admin()
         
         if self.docs_db.find_one({ 'doc_type': doc_type }):
             raise HTTPException(409, f"Cannot delete schema '{doc_type}' because it was already used to extract a document.")
@@ -127,7 +125,7 @@ class RAGService:
         return OKResponse(f"Successfully deleted JSON schema for '{doc_type}'")
     
 
-    async def create_doc(self, source_path, doc_data, force_ocr, allow_override, user_access_roles):
+    async def create_doc(self, source_path, doc_data, force_ocr, allow_override, user):
         doc_id = doc_data.get('id')
         if not doc_id:
             raise HTTPException(400, "docData must contain an 'id'")
@@ -147,7 +145,7 @@ class RAGService:
 
         # Validate user access
         try:
-            self.access_manager.has_doc_access(doc_id, user_access_roles)
+            user.has_doc_access(doc_id)
         except DocumentNotFoundError as e:
             pass # Expeceted behavior
 
@@ -204,12 +202,12 @@ class RAGService:
         return OKResponse(f"Successfully processed Document {doc_id}", doc_data)
 
 
-    def update_doc_data(self, doc_data, merge_existing, user_access_roles):
+    def update_doc_data(self, doc_data, merge_existing, user):
         doc_id = doc_data.get('id')
         if not doc_id:
             raise HTTPException(400, "docData must contain an 'id'")
         
-        old_doc = self.access_manager.has_doc_access(doc_id, user_access_roles)
+        old_doc = user.has_doc_access(doc_id)
         
         old_doc_type = old_doc.get('docType')
         merged_doc = { **old_doc, **doc_data }
@@ -226,10 +224,13 @@ class RAGService:
         updated_doc = merged_doc if merge_existing else doc_data
         
         # Validate user access
-        access_groups = updated_doc.get('accessGroups')
-        if not access_groups:
-            access_groups = old_doc['accessGroups']
-        updated_doc['accessGroups'] = self.access_manager.validate_new_access_groups(access_groups)
+        if 'accessGroups' not in doc_data:
+            if not merge_existing:
+                raise HTTPException(400, "The new document must contain an accessGroups field")
+            updated_doc['accessGroups'] = old_doc.get('accessGroups')
+        else:
+            # It exists in doc_data, so validate whether it's None or a value
+            updated_doc['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
         
         # If merge wasn't allowed and doc_data is missing a path, take the old one
         if not updated_doc.get('path'):
@@ -241,8 +242,8 @@ class RAGService:
         return OKResponse(f"Successfully updated Document {doc_id}", updated_doc)
 
 
-    def get_doc(self, doc_id, user_access_roles):
-        doc = self.access_manager.has_doc_access(doc_id, user_access_roles)
+    def get_doc(self, doc_id, user):
+        doc = user.access_manager.has_doc_access(doc_id)
 
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         with open(txt_path, 'r', errors='ignore') as f:
@@ -253,9 +254,9 @@ class RAGService:
         return OKResponse(f"Successfully retrieved Document {doc_id}", doc)
         
     
-    def delete_doc(self, doc_id, user_access_roles):
+    def delete_doc(self, doc_id, user):
         # Validate user access
-        self.access_manager.has_doc_access(doc_id, user_access_roles)
+        user.has_doc_access(doc_id)
 
         # Delete from vector DB
         self.vector_db.delete(where={ 'doc_id': doc_id })
@@ -272,7 +273,7 @@ class RAGService:
         return OKResponse(f"Successfully deleted Document {doc_id}", doc_data)
     
 
-    def find_docs(self, message, n_results, user_access_roles):
+    def find_docs(self, message, n_results, user):
         """
         Retrieves the most relevant document chunks for a given message using semantic search between message and known paragraphs
 
@@ -295,7 +296,7 @@ class RAGService:
         for doc_data in nearest_neighbors:
             try:
                 doc_id = doc_data['id']
-                self.access_manager.has_doc_access(doc_id, user_access_roles)
+                user.has_doc_access(doc_id)
             except DocumentNotFoundError:
                 logger.warning(f"Corrupt data. VectorDB is referencing a missing doc with id {doc_id} for company {self.company_id} !")
                 continue

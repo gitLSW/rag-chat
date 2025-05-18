@@ -47,7 +47,7 @@ async def websocket_query(websocket: WebSocket):
     await websocket.accept()
     company_id = websocket.scope["state"].company_id
     user_id = websocket.scope["state"].user_id
-    user_roles = websocket.scope["state"].user_roles
+    user = websocket.scope["state"].user
 
     try:
         while True:
@@ -70,7 +70,7 @@ async def websocket_query(websocket: WebSocket):
                     userId=user_id,
                     company_id=company_id,
                     chat_id=action.chat_id,
-                    user_access_roles=user_roles,
+                    user_access_roles=user.user_roles,
                 )
                 await websocket.send_text(f"[STARTED] Chat {action.chat_id}")
 

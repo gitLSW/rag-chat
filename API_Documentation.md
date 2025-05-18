@@ -9,8 +9,7 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
 ```json
 {
   "companyId": USER_COMPANY_IDENTIFIER,
-  "userId": USER_IDENTIFIER,
-  "userRoles": USER_ACCSESS_GROUPS
+  "userId": USER_IDENTIFIER
 }
 ```
 The public key will be retreived automatically from the Auth server's URL, which needs to be specified in the .env file.
@@ -97,7 +96,7 @@ If it passed, it will be added to the document database (`MongoDB`).
 Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
-- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If the automatic JSON extract failed for a given doc_type, the provides metadata, plain document text and paragraph embeddings will still be saved.
+- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If accessGroups is Null or empty, everybody has document access. If the automatic JSON extract failed for a given doc_type, the provides metadata, plain document text and paragraph embeddings will still be saved.
 - **Request Schema**:
 
 `Form Table`:
@@ -127,13 +126,13 @@ Finally, the document's text content gets saved as a txt file.
       "description": "Document type that matches a predefined schema"
     },
     "accessGroups": {
-      "type": "array",
+      "type": ["array", "null"],
       "items": {"type": "string"},
       "minItems": 1,
       "description": "List of groups with access to this document"
     }
   },
-  "required": ["id", "accessGroups"],
+  "required": ["id"],
   "additionalProperties": {
     "description": "Additional properties must match the schema defined for the docType"
   }

@@ -9,7 +9,7 @@ from typing import List
 from mimetypes import guess_type
 
 from fastapi import FastAPI, Request, Form, HTTPException, File, UploadFile, WebSocket
-from pydantic import BaseModel, conlist
+from pydantic import BaseModel
 
 from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
@@ -92,19 +92,19 @@ async def create_access_group(user_id, req: Request):
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.access_manager.create_update_user(user_data, req.state.user_roles)
+    return rag_service.access_manager.create_update_user(user_data, req.state.user)
 
 
 @app.post("/documentSchemata")
 async def add_doc_schema(req: AddDocSchemaReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user_roles)
+    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user)
 
 
 @app.delete("/documentSchemata/{doc_type}")
 async def delete_doc_schema(doc_type, req: Request):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.delete_json_schema_type(doc_type, req.state.user_roles)
+    return rag_service.delete_json_schema_type(doc_type, req.state.user)
 
 
 @app.post("/documents")
@@ -113,7 +113,7 @@ async def create_doc(req: Request,
                      forceOcr: bool = Form(False),
                      allowOverride: bool = Form(True),
                      docData: str = Form(...)):
-    # THIS IS HOW TOE FORM IS SET UP: {
+    # THIS IS HOW THE FORM IS SET UP: {
     #     file: File,
     #     forceOcr: bool,
     #     allowOverride: bool,
@@ -153,7 +153,7 @@ async def create_doc(req: Request,
     try:
         # Add and process doc
         rag_service = get_company_rag_service(req.state.company_id)
-        res = await rag_service.create_doc(source_path, docData, forceOcr, allowOverride, req.state.user_role)
+        res = await rag_service.create_doc(source_path, docData, forceOcr, allowOverride, req.state.user)
     except (HTTPException, Exception) as e:
         error = e
     finally:
@@ -174,26 +174,26 @@ async def update_doc(doc_id, req: UpdateDocReq):
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user_roles)
+    return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user)
 
 
 @app.get("/documents/{doc_id}")
 async def get_doc(doc_id, req):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.get_doc(doc_id, req.state.user_roles)
+    return rag_service.get_doc(doc_id, req.state.user)
 
 
 @app.delete("/documents/{doc_id}")
 async def delete_doc(doc_id, req):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.delete_doc(doc_id, req.state.user_roles)
+    return rag_service.delete_doc(doc_id, req.state.user)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
 @app.get("/search")
 async def search_docs(req: SemanticSearchReq):
     rag_service = get_company_rag_service(req.state.company_id)
-    return rag_service.find_docs(req.question, req.search_depth, req.state.user_roles)
+    return rag_service.find_docs(req.question, req.search_depth, req.state.user)
 
 
 # main.py

@@ -1,14 +1,13 @@
-import os
-import json
-from utils import get_env_var, get_company_path
+from utils import get_env_var
 from fastapi import HTTPException
-from filelock import FileLock
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
 from jsonschema import validate, ValidationError
 from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
 MONGO_DB_URL = get_env_var('MONGO_DB_URL')
+
+db_client = MongoClient(MONGO_DB_URL)
 
 USER_SCHEMA = {
     "type": "object",
@@ -25,26 +24,58 @@ USER_SCHEMA = {
 }
 
 
+class User:
+    def __init__(self, user_data, company_id):
+        # Validate user_data
+        try:
+            validate(instance=user_data, schema=USER_SCHEMA)
+        except ValidationError as e:
+            raise ValueError(f"Invalid user data: {e.message}")
+        
+        self.user_id = user_data['userId']
+        self.user_roles = user_data['userRoles']
+        self.company_id = company_id
+
+
+    def assert_admin(self):
+        if 'admin' not in self.user_roles:
+            raise InsufficientAccessError(self.user_roles, "Insufficient access rights, permission denied. Admin rights required")
+        
+
+    def has_doc_access(self, doc_id):
+        doc = db_client[self.company_id]['docs'].find_one({ '_id': doc_id })
+        if not doc:
+            raise DocumentNotFoundError(doc_id)
+        
+        doc_access_groups = doc.get('accessGroups')
+        if not doc_access_groups:
+            return doc # Allow everybody for a doc with access_groups None
+        
+        if not any(user_access_role in doc_access_groups for user_access_role in self.user_roles):
+            raise InsufficientAccessError(self.user_roles)
+        
+        return doc
+
+
 class AccessManager:
     def __init__(self, company_id):
         self.company_id = company_id
-        self.access_data_path = get_company_path(company_id, 'access_data.json')
         
         # Connect to admin database (requires admin privileges)
-        self.db_client = MongoClient(MONGO_DB_URL)
+        self.company_db = db_client[self.company_id]
+        
+        # Get valid_access_groups from all users
+        users_db = self.company_db['users']
+        result = list(users_db.aggregate([
+            {'$unwind': '$userRoles'},
+            {'$group': {'_id': None, 'allRoles': {'$addToSet': '$userRoles'}}}
+        ]))
+        
+        self.valid_access_groups = set(result[0]['allRoles']) if result else set()
+        self.valid_access_groups.add({'admin'})
 
-        if not os.path.exists(self.access_data_path):
-            self.valid_access_groups = {'admin'}
-            return
 
-        lock = FileLock(self.access_data_path)
-        with lock:
-            with open(self.access_data_path, "r") as f:
-                file_data = json.load(f)
-                self.valid_access_groups = file_data['accessGroups']
-
-
-    def create_update_user(self, user_data, curr_user_roles):
+    def create_update_user(self, user_data, curr_user):
         """
         Creates or updates a MongoDB‐backed LLM user and a single per-user view,
         which filters docs to any of the user's roles. Also upserts user metadata
@@ -52,49 +83,46 @@ class AccessManager:
 
         Args:
             user_data: dict with 'userId' and list of 'userRoles'
-            curr_user_roles: list of roles of the invoking user, must include 'admin'
+            curr_user: the invoking user, must be 'admin'
         """
-        # Require admin rights
-        if 'admin' not in curr_user_roles:
-            raise InsufficientAccessError(curr_user_roles, "Admin role required")
+        curr_user.assert_admin() # Require admin rights
 
-        # Validate user_data
-        try:
-            validate(instance=user_data, schema=USER_SCHEMA)
-        except ValidationError as e:
-            raise ValueError(f"Invalid user data: {e.message}")
+        user = User(user_data)
 
-        user_id = user_data["userId"]
-        user_roles = user_data["userRoles"]
+        self.company_db = db_client[self.company_id]
+        view_name = f'access_view_{user.user_id}'
 
-        company_db = self.db_client[self.company_id]
-        view_name = f"access_view_{user_id}"
+        # Drop existing view (cannot 'create' over it) and recreate with new match
+        if view_name in self.company_db.list_collection_names():
+            self.company_db[view_name].drop()
 
-        # 3. Drop existing view (cannot 'create' over it) and recreate with new match
-        if view_name in company_db.list_collection_names():
-            company_db[view_name].drop()
-
-        company_db.command({
-            "create": view_name,
-            "viewOn": "docs",
-            "pipeline": [
-                { "$match": { "accessGroups": { "$in": user_roles } } }
-            ]
+        self.company_db.command({
+            'create': view_name,
+            'viewOn': 'docs',
+            'pipeline': [{
+                '$match': {
+                    '$or': [
+                        { 'accessGroups': { '$in': user.user_roles } },
+                        { 'accessGroups': None },
+                        { 'accessGroups': { '$exists': False } }
+                    ]
+                }
+            }]
         })  # :contentReference[oaicite:0]{index=0}
 
-        # 4. Create the LLM user only if missing; catch the 'already exists' error
-        username = f"llm_user_{self.company_id}_{user_id}"
-        password = get_env_var(f"LLM_USER_{self.company_id}_PW")
+        # Create the LLM user only if missing; catch the 'already exists' error
+        username = f'llm_user_{self.company_id}_{user.user_id}'
+        password = get_env_var(f'LLM_USER_{self.company_id}_PW')
         try:
-            self.db_client['admin'].command({
-                "createUser": username,
-                "pwd": password,
-                "roles": [{
-                    "role": "read",
-                    "db": self.company_id,
-                    "collection": view_name
+            db_client['admin'].command({
+                'createUser': username,
+                'pwd': password,
+                'roles': [{
+                    'role': 'read',
+                    'db': self.company_id,
+                    'collection': view_name
                 }]
-                    })
+            })
         except OperationFailure as e:
             if e.code == 51003:
                 pass # User already exists — safe to ignore
@@ -103,36 +131,23 @@ class AccessManager:
 
         # The 'users' collection is not currently needed, but may be useful in later versions of the server
         # Overwrite user
-        company_db['users'].replace_one(
-            {"userId": user_id},
+        self.company_db['users'].replace_one(
+            {'userId': user.user_id},
             user_data,
             upsert=True
         )
-
-        # Persist all-new roles into the global access_groups set
-        lock = FileLock(self.access_data_path)
-        with lock:
-            self.valid_access_groups.update(user_roles) # Update all unique entries
-            with open(self.access_data_path, 'w') as f:
-                json.dump({"accessGroups": list(self.valid_access_groups)}, f)
-
-        return OKResponse(f"User {user_id} successfully created or updated.")
-
-
-    def has_doc_access(self, doc_id, user_access_roles):
-        doc = self.db_client[self.company_id]['docs'].find_one({ '_id': doc_id })
-        if not doc:
-            raise DocumentNotFoundError(doc_id)
         
-        if not any(user_access_role in doc['accessGroups'] for user_access_role in user_access_roles):
-            raise InsufficientAccessError(user_access_roles)
-        
-        return doc
+        self.valid_access_groups.update(user.user_roles) # Update all unique entries
+
+        return OKResponse(f"User {user.user_id} successfully created or updated.")
     
     
     def validate_new_access_groups(self, access_groups):
         # Validate new_access_groups
-        access_groups = set(access_groups or [])
+        if not access_group:
+            return None
+        
+        access_groups = set(access_groups)
         access_groups.add('admin') # Always add admin
         invalid_access_groups = []
         for access_group in access_groups:

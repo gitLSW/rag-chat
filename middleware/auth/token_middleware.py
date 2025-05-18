@@ -4,13 +4,16 @@ from jose import jwt, JWTError
 from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
-from services.access_manager import get_access_manager
 from utils import get_env_var
+from pymongo import MongoClient
 
 IS_PROD_ENV = get_env_var('IS_PROD_ENV')
 if not IS_PROD_ENV:
     JWT_PUBLIC_KEY = get_env_var('JWT_PUBLIC_KEY')
 
+MONGO_DB_URL = get_env_var('MONGO_DB_URL')
+
+db_client = MongoClient(MONGO_DB_URL)
 security = HTTPBearer()
 
 
@@ -62,19 +65,14 @@ class TokenMiddleware(BaseHTTPMiddleware):
         user_id = payload.get("userId")
         if not user_id:
             raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userId.")
-
-        user_roles = payload.get("userRoles")
-        if not user_roles:
-            raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userRoles.")
         
-        access_manager = get_access_manager(company_id)
-        for user_role in user_roles:
-            if not user_role in access_manager.valid_access_groups:
-                raise HTTPException(400, f"Unknown user role '{user_role}'. Register it with POST /accessGroups first.")
-
+        user = db_client[company_id]['users'].find_one({ '_id': user_id })
+        if not user:
+            raise HTTPException(404, f"No user found for id {user_id}. Register new users first.")
+        
         req.state.company_id = company_id
         req.state.user_id = user_id
-        req.state.user_roles = user_roles
+        req.state.user = user
 
         return await call_next(req)
 
