@@ -87,7 +87,7 @@ class AccessManager:
         """
         curr_user.assert_admin() # Require admin rights
 
-        user = User(user_data)
+        user = User(user_data, self.company_id)
 
         self.company_db = db_client[self.company_id]
         view_name = f'access_view_{user.user_id}'
