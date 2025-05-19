@@ -1,11 +1,12 @@
 import time
 import requests
+from utils import get_env_var
 from jose import jwt, JWTError
 from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
-from utils import get_env_var
 from pymongo import MongoClient
+from services.access_manager import User
 
 IS_PROD_ENV = get_env_var('IS_PROD_ENV')
 if not IS_PROD_ENV:
@@ -71,8 +72,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             raise HTTPException(404, f"No user found for id {user_id}. Register new users first.")
         
         req.state.company_id = company_id
-        req.state.user_id = user_id
-        req.state.user = user
+        req.state.user = User(user, self.company_id)
 
         return await call_next(req)
 
