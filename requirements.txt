@@ -146,12 +146,9 @@ orjson==3.10.16
 outlines==0.1.11
 outlines_core==0.1.26
 overrides==7.7.0
-packaging @ file:///croot/packaging_1734472117206/work
 partial-json-parser==0.2.1.1.post5
 pathlib==1.0.1
 pillow==11.1.0
-platformdirs @ file:///work/perseverance-python-buildout/croot/platformdirs_1701732573265/work
-pluggy @ file:///croot/pluggy_1733169602837/work
 posthog==3.23.0
 prometheus-fastapi-instrumentator==7.1.0
 prometheus_client==0.21.1
