@@ -71,12 +71,12 @@ app = FastAPI()
 # Add the HTTP middleware
 register_exception_handlers(app)
 app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
-# app.add_middleware(
-#     APIAccessMiddleware,
-#     api_key=API_KEY,
-#     allowed_ips=API_ALLOWED_IPs,
-#     exempt_paths={"/chat"}
-# )
+app.add_middleware(
+    APIAccessMiddleware,
+    api_key=API_KEY,
+    allowed_ips=API_ALLOWED_IPs,
+    exempt_paths={"/chat"}
+)
 
 app.include_router(chat_ws_router) # Add /chat endpoint
 
@@ -136,7 +136,7 @@ async def create_doc(req: Request,
     # Check if MIME type is supported by DocExtractor
     supported_mime_types = DocExtractor._get_handlers().keys()
     if mime_type not in supported_mime_types:
-        raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {", ".join(supported_mime_types)}")
+        raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
 
     # Ensure the directory exists
     upload_dir = get_company_path(req.state.user.company_id, f"uploads/{uuid.uuid4()}")
