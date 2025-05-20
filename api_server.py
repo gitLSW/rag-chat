@@ -28,7 +28,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("server.log"),
+        logging.FileHandler(os.path.join('data', 'server.log')),
         logging.StreamHandler()
     ]
 )
@@ -91,19 +91,19 @@ async def create_access_group(user_id, req: Request):
     elif body_user_id != user_id:
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.access_manager.create_update_user(user_data, req.state.user)
 
 
 @app.post("/documentSchemata")
 async def add_doc_schema(req: AddDocSchemaReq):
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user)
 
 
 @app.delete("/documentSchemata/{doc_type}")
 async def delete_doc_schema(doc_type, req: Request):
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.delete_json_schema_type(doc_type, req.state.user)
 
 
@@ -139,7 +139,7 @@ async def create_doc(req: Request,
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {", ".join(supported_mime_types)}")
 
     # Ensure the directory exists
-    upload_dir = get_company_path(req.state.company_id, f"uploads/{uuid.uuid4()}")
+    upload_dir = get_company_path(req.state.user.company_id, f"uploads/{uuid.uuid4()}")
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
@@ -152,7 +152,7 @@ async def create_doc(req: Request,
     error = None
     try:
         # Add and process doc
-        rag_service = get_company_rag_service(req.state.company_id)
+        rag_service = get_company_rag_service(req.state.user.company_id)
         res = await rag_service.create_doc(source_path, docData, forceOcr, allowOverride, req.state.user)
     except (HTTPException, Exception) as e:
         error = e
@@ -173,26 +173,26 @@ async def update_doc(doc_id, req: UpdateDocReq):
     elif body_doc_id != doc_id:
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user)
 
 
 @app.get("/documents/{doc_id}")
 async def get_doc(doc_id, req):
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.get_doc(doc_id, req.state.user)
 
 
 @app.delete("/documents/{doc_id}")
 async def delete_doc(doc_id, req):
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.delete_doc(doc_id, req.state.user)
 
 
 # TODO: Gather docs for download (if not downlaoding from honesty system)
 @app.get("/search")
 async def search_docs(req: SemanticSearchReq):
-    rag_service = get_company_rag_service(req.state.company_id)
+    rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.find_docs(req.question, req.search_depth, req.state.user)
 
 

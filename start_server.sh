@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MONGO_PORT=27017
-DB_PATH="./databases/mongo_db"
+DB_PATH="./data/databases/mongo_db"
 
 mkdir -p $DB_PATH
 
