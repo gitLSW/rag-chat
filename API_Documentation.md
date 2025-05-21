@@ -96,7 +96,7 @@ If it passed, it will be added to the document database (`MongoDB`).
 Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
-- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If accessGroups is Null or empty, everybody has document access. If the automatic JSON extract failed for a given doc_type, the provides metadata, plain document text and paragraph embeddings will still be saved.
+- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If accessGroups is Null or empty, everybody has document access. If the automatic JSON extract failed for a given doc_type, the provides metadata, plain document text and paragraph embeddings will still be saved. Supported MIME file types: ```pdf, docx, odt, rtf, txt, csv, xml, json.```
 - **Request Schema**:
 
 `Form Table`:
