@@ -1,11 +1,12 @@
 import time
 import requests
+from utils import get_env_var
 from jose import jwt, JWTError
 from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
-from utils import get_env_var
 from pymongo import MongoClient
+from services.access_manager import User
 
 IS_PROD_ENV = get_env_var('IS_PROD_ENV')
 if not IS_PROD_ENV:
@@ -65,14 +66,16 @@ class TokenMiddleware(BaseHTTPMiddleware):
         user_id = payload.get("userId")
         if not user_id:
             raise HTTPException(400, f"JWT Token was decoded, but the payload was missing the userId.")
+
+        if user_id == 'admin':
+            # The super admin was used. Without a super admin, it wouldn't be possible to register any users (including other admins)
+            user_data = { 'userId': 'admin', 'userRoles': ['admin'] }
+        else:
+            user_data = db_client[company_id]['users'].find_one({ '_id': user_id })
+            if not user_data:
+                raise HTTPException(404, f"No user found for id {user_id}. Register new users first.")
         
-        user = db_client[company_id]['users'].find_one({ '_id': user_id })
-        if not user:
-            raise HTTPException(404, f"No user found for id {user_id}. Register new users first.")
-        
-        req.state.company_id = company_id
-        req.state.user_id = user_id
-        req.state.user = user
+        req.state.user = User(user_data, self.company_id)
 
         return await call_next(req)
 

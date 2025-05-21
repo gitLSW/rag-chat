@@ -61,7 +61,7 @@ def get_company_path(company_id: str, sub_path: str) -> str:
     project_root = os.path.dirname(os.path.abspath(__file__))
 
     # Build the base path for the company
-    company_root = os.path.join(project_root, "companies", company_id)
+    company_root = os.path.join(project_root, 'data', 'companies', company_id)
 
     # Join and normalize the full path
     target_path = os.path.normpath(os.path.join(company_root, sub_path))

@@ -46,7 +46,7 @@ BASE_DOC_SCHEMA = {
 
 class RAGService:
     # Initialize persistent vector database (ChromaDB)
-    vector_db = chromadb.PersistentClient(path=os.path.join('databases', 'chroma_db'))
+    vector_db = chromadb.PersistentClient(path=os.path.join('data', 'databases', 'chroma_db'))
     doc_extractor = DocExtractor()
     llm_service = LLMService()
 
@@ -68,10 +68,17 @@ class RAGService:
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         self.doc_path_classifier = DocPathClassifier(company_id)
 
-        self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
-        with open(self.schemata_path, 'r', errors='ignore') as f:
-            self.doc_schemata = json.loads(f.read())
         self.schemata_embeddings = None
+        self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
+        if os.path.exists(self.schemata_path):
+            schemata_path = self.schemata_path
+        else:
+            schemata_path = os.path.dirname(os.path.abspath(__file__)) 
+            schemata_path = os.path.join(schemata_path, 'data', 'default_doc_schemata.json')
+            schemata_path = os.path.normpath(schemata_path)
+
+        with open(schemata_path, 'r', errors='ignore') as f:
+            self.doc_schemata = json.loads(f.read())
 
         # Create or connect to database
         client = MongoClient(MONGO_DB_URL)

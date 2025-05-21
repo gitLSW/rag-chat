@@ -6,7 +6,6 @@ from services.ocr import OCR
 import fitz  # PyMuPDF
 import docx
 import openpyxl
-import pandas as pd
 import odf.text
 import odf.opendocument
 from striprtf.striprtf import rtf_to_text

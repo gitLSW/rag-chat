@@ -1,7 +1,7 @@
 import json
 import logging
 from pymongo import MongoClient
-from get_env_var import get_env_var, MissingEnvVarError
+from utils import get_env_var, MissingEnvVarError
 
 logger = logging.getLogger(__name__)
 
