@@ -43,7 +43,7 @@ class DocExtractor:
 
     @staticmethod
     def extract_text(file_path):
-        return "\n\n".join(paragraph for _, paragraph in DocExtractor.extract_paragraphs(file_path))
+        return '\n\n'.join(paragraph for _, paragraph in DocExtractor.extract_paragraphs(file_path))
 
 
     @staticmethod
@@ -127,7 +127,7 @@ class DocExtractor:
                 for row in sheet.iter_rows(values_only=True):
                     values = [str(cell) for cell in row if cell is not None]
                     if values:
-                        paragraphs.append((None, " | ".join(values)))
+                        paragraphs.append((None, ' | '.join(values)))
             return paragraphs
         except Exception as e:
             raise OSError(f"Error reading XLSX: {str(e)}") from e

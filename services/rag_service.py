@@ -159,7 +159,7 @@ class RAGService:
         doc_data['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
 
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path, force_ocr)
-        doc_text = "\n\n".join(paragraph for _, paragraph in paragraphs)
+        doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         
         # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
         if not doc_data.get('path'):
@@ -355,7 +355,7 @@ class RAGService:
             ### TASK REQUIREMENT
             You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
             
-            {"/n/n".join(paragraph_texts)}
+            {'/n/n'.join(paragraph_texts)}
 
             ### STRICT RULES FOR GENERATING OUTPUT:
             **ALWAYS PROVIDE YOUR FINAL ANSWER**:

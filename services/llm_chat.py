@@ -96,7 +96,7 @@ class LLMChat:
             elif entry.rag_search_depth:
                 docs_data = self.rag_service.find_docs(entry.message, entry.rag_search_depth)
                 doc_summaries, doc_sources_map = self._summarize_docs(docs_data, entry.message)
-                doc_sources_summary = "\n\n".join(doc_summaries)
+                doc_sources_summary = '\n\n'.join(doc_summaries)
                 prompt += "These texts might be relevant to the previous message:"
 
             resume_req_id = f"{self.user_id}-{self.chat_id}-final-answer"
@@ -290,7 +290,7 @@ class LLMChat:
             history.append(f"User: {message}")
             history.append(f"You: {answer}")
         
-        return "\n\n".join(history)
+        return '\n\n'.join(history)
     
 
     def get_chat_messages(self):
@@ -314,5 +314,5 @@ class LLMChat:
             if pages is None:
                 sources_info += "\n"
             else:
-                sources_info += f" on pages {", ".join(map(str, sorted(pages)))}\n"
+                sources_info += f" on pages {', '.join(map(str, sorted(pages)))}\n"
         return sources_info

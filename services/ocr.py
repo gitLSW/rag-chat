@@ -34,7 +34,7 @@ class OCR:
         lines = []
         for line in block_data.lines:
             # Join words with spaces and strip trailing whitespace
-            line_text = " ".join(word.value for word in line.words).rstrip()
+            line_text = ' '.join(word.value for word in line.words).rstrip()
             
             # Remove trailing hyphen if present
             if line_text.endswith('-'):
@@ -43,4 +43,4 @@ class OCR:
             lines.append(line_text)
             
         # Join processed lines with single space
-        return " ".join(lines)
+        return ' '.join(lines)
