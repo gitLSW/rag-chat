@@ -4,6 +4,7 @@ numpy
 dotenv
 fastapi
 pyjwt
+cryptography
 jsonschema
 pymongo
 chromadb
