@@ -148,6 +148,8 @@ class RAGService:
         else:
             doc_schema = BASE_DOC_SCHEMA
 
+        print('Schema:', doc_schema)
+
         # Validate user access
         try:
             user.has_doc_access(doc_id)
@@ -168,6 +170,8 @@ class RAGService:
         # Extract JSON
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
         
+        print('Schema:', doc_schema)
+
         if is_extract_valid:
             # Build final schema
             doc_schema = self._merge_with_base_schema(doc_schema)
@@ -219,7 +223,10 @@ class RAGService:
         merged_doc = { **old_doc, **doc_data }
         
         doc_type = merged_doc.get('docType')
-        if doc_type != old_doc_type: # This will allow 2 None doc_type docs to merge
+        if not doc_type and not old_doc_type:
+            raise HTTPException(422, "No docType defined.")
+
+        if doc_type != old_doc_type:
             merge_existing = False
         
         doc_schema = self.doc_schemata.get(doc_type)
