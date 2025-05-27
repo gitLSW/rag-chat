@@ -246,8 +246,7 @@ class LLMService:
 
             async for output in llm.generate(prompt=prompt_text,
                                              sampling_params=sampling_params,
-                                             request_id=chunk_req_id,
-                                             stream=True):
+                                             request_id=chunk_req_id):
                 req = self._current_requests.get(req_id) # Always get again in case it was aborted (= deleted)
                 if req:
                     req.chunk_states[chunk_req_id].extend(output.outputs[0].token_ids)
