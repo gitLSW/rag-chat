@@ -1,8 +1,11 @@
 import os
 from dotenv import load_dotenv
 
+# Get the root directory of the project
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Get current file, go up two
+
 # Load environment variables once at startup
-load_dotenv()
+load_dotenv(os.path.join(project_root, '.env'))
 
 
 # Custom error class
@@ -56,9 +59,6 @@ def get_company_path(company_id: str, sub_path: str) -> str:
     """
     # Remove leading slashes from sub_path to prevent it from being treated as absolute
     sub_path = sub_path.lstrip("/\\")
-    
-    # Get the root directory of the project (where this script lives)
-    project_root = os.path.dirname(os.path.abspath(__file__))
 
     # Build the base path for the company
     company_root = os.path.join(project_root, 'data', 'companies', company_id)

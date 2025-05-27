@@ -3,7 +3,7 @@ import shutil
 import uuid
 import json
 import logging
-from utils import get_env_var, get_company_path
+from utils import project_root, get_env_var, get_company_path
 from typing import List
 
 from mimetypes import guess_type
@@ -23,7 +23,6 @@ API_KEY = get_env_var('API_KEY')
 API_ALLOWED_IPs = get_env_var('API_ALLOWED_IPs')
 PUBLIC_KEY_URL = get_env_var('PUBLIC_KEY_SOURCE_URL')
 
-project_root = os.path.dirname(os.path.abspath(__file__))
 
 # Configure logging
 logging.basicConfig(
