@@ -16,7 +16,7 @@ class MissingEnvVarError(Exception):
         self.var_name = var_name
 
 
-def get_env_var(env_var_name: str, default: any = None) -> str:
+def get_env_var(env_var_name, default):
     """
     Get an environment variable or raise MissingEnvVarError if not found.
     
@@ -34,6 +34,16 @@ def get_env_var(env_var_name: str, default: any = None) -> str:
 
     if value is None:
         raise MissingEnvVarError(env_var_name)
+    
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    
+    try:
+        return float(value)
+    except ValueError:
+        pass
     
     normalized_value = value.lower()
     boolean_descriptions = ['true', 'false']
