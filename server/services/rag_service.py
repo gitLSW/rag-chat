@@ -164,16 +164,15 @@ class RAGService:
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
 
         if is_extract_valid:
+            # Build final schema
+            doc_schema = self._merge_with_base_schema(doc_schema)
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
-        
+
         doc_data['docType'] = doc_type
 
-        # Build final schema
         if not doc_schema:
             doc_schema = BASE_DOC_SCHEMA
-        else:
-            doc_schema = self._merge_with_base_schema(doc_schema)
         
         print('FINAL DOC DATA:', doc_data)
         print('FINAL DOC SCHEMA:', doc_schema)
