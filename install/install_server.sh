@@ -24,15 +24,6 @@ sudo systemctl enable mongod
 python3 -m venv rag-env
 source rag-env/bin/activate
 
-# ## Option 2: Installing as a pip user
-# # Remove tensorflow, because some packages (e.g.: transformers) will try to use it, but shouldn't
-# sudo apt remove python3-tensorflow-cuda -y
-# sudo apt autoremove -y
-
-# # To deal with broken scikit-learn ionstall, install numpy 2 
-# pip install --no-binary :all: scipy scikit-learn
-# # Now torchvision will ause problems... Fuck this approach, just use a venv
-
 # Install python server
 pip install --upgrade pip
 # Get your CUDA version from: 'nvidia-smi'
