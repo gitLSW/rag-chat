@@ -140,16 +140,9 @@ class RAGService:
             raise HTTPException(409, f"Doc {doc_id} already exists and override was disallowed !")
         
         doc_type = doc_data.get('docType')
-        if doc_type:
-            doc_schema = self.doc_schemata.get(doc_type)
-            if not doc_schema:
-                raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
-            doc_schema = self._merge_with_base_schema(doc_schema)
-        else:
-            doc_schema = BASE_DOC_SCHEMA
-
-        print('Schema:', doc_schema)
-
+        if doc_type and not doc_type in self.doc_schemata.keys():
+            raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
+        
         # Validate user access
         try:
             user.has_doc_access(doc_id)
@@ -169,19 +162,22 @@ class RAGService:
 
         # Extract JSON
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
-        
-        print('Schema:', doc_schema)
 
         if is_extract_valid:
-            # Build final schema
-            doc_schema = self._merge_with_base_schema(doc_schema)
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
         
         doc_data['docType'] = doc_type
+
+        # Build final schema
+        if not doc_schema:
+            doc_schema = BASE_DOC_SCHEMA
+        else:
+            doc_schema = self._merge_with_base_schema(doc_schema)
         
         print('FINAL DOC DATA:', doc_data)
-        print('Schema:', doc_schema)
+        print('FINAL DOC SCHEMA:', doc_schema)
+
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
         self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
