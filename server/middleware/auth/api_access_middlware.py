@@ -1,5 +1,8 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, HTTPException
+from utils import get_env_var
+
+IS_PROD_ENV = get_env_var('IS_PROD_ENV')
 
 
 class APIAccessMiddleware(BaseHTTPMiddleware):
@@ -18,7 +21,7 @@ class APIAccessMiddleware(BaseHTTPMiddleware):
 
         # Verify IP address
         client_ip = request.client.host
-        if client_ip not in self.allowed_ips:
+        if client_ip not in self.allowed_ips and not IS_PROD_ENV:
             raise HTTPException(403, "Forbidden - IP address not allowed")
 
         # Verify API key
