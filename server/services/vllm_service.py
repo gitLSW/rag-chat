@@ -240,7 +240,11 @@ class LLMService:
         try:
             req = self._current_requests.get(req_id)
             req.chunk_states[chunk_req_id].extend(chunk) # Add input to request chunk state
-            async for output in llm.generate(prompt_token_ids=chunk,
+
+            # Decode tokens back to string prompt for generate()
+            prompt_text = tokenizer.decode(chunk, skip_special_tokens=True)
+
+            async for output in llm.generate(prompt=prompt_text,
                                              sampling_params=sampling_params,
                                              request_id=chunk_req_id,
                                              stream=True):
