@@ -9,7 +9,7 @@ mongod --port $MONGO_PORT --dbpath $DB_PATH --bind_ip 127.0.0.1 &
 MONGO_PID=$!
 
 echo "[INFO] Starting FastAPI server..."
-
+python server/api_server.py
 
 # Shutdown MongoDB when done
 kill $MONGO_PID
