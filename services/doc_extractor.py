@@ -3,10 +3,10 @@ from pathlib import Path
 import mimetypes
 
 from services.ocr import OCR
-import fitz  # PyMuPDF
-import docx
+import fitz # PyMuPDF
+import docx # python-docx
 import openpyxl
-import odf.text
+import odf.text # odfpy
 import odf.opendocument
 from striprtf.striprtf import rtf_to_text
 

@@ -35,9 +35,7 @@ source rag-env/bin/activate
 
 # Install python server
 pip install --upgrade pip
-# Check your CUDA version with: 'nvidia-smi'
-# Get the link at https://pytorch.org/get-started/locally/
+# Get your CUDA version from: 'nvidia-smi'
+# Check the instructions at https://pytorch.org/get-started/locally/
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip install setuptools
-pip install -e git+https://github.com/mindee/doctr.git#egg=python-doctr[torch,viz]
 pip install -r requirements.txt
