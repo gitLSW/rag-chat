@@ -8,6 +8,8 @@ echo "[INFO] Starting MongoDB on port $MONGO_PORT..."
 mongod --port $MONGO_PORT --dbpath $DB_PATH --bind_ip 127.0.0.1 &
 MONGO_PID=$!
 
+
+source rag-env/bin/activate
 echo "[INFO] Starting FastAPI server..."
 python server/api_server.py
 
