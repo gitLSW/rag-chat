@@ -19,6 +19,7 @@ from middleware.auth.api_access_middlware import APIAccessMiddleware
 from middleware.error_handler_middleware import register_exception_handlers
 
 # Load environment variables
+PORT = get_env_var('PORT')
 API_KEY = get_env_var('API_KEY')
 API_ALLOWED_IPs = get_env_var('API_ALLOWED_IPs')
 PUBLIC_KEY_URL = get_env_var('PUBLIC_KEY_SOURCE_URL')
@@ -201,5 +202,5 @@ async def search_docs(req: SemanticSearchReq):
 import uvicorn
 
 if __name__ == '__main__':
-    uvicorn.run(app, host='0.0.0.0', port=7500)
+    uvicorn.run(app, host='0.0.0.0', port=PORT)
     logger.info("Started Server...")

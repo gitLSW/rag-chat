@@ -1,8 +1,11 @@
-# Important step before installing mongoDB
+### Before installing
+```bash
 sudo apt update
 sudo apt upgrade -y
+```
 
-# Install MongoDB
+### Install MongoDB
+```bash
 sudo apt-get install gnupg curl
 
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
@@ -14,19 +17,36 @@ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gp
 sudo apt-get update
 
 sudo apt-get install -y mongodb-org
+```
 
-# Start and enable mongoDB
+### Start and enable mongoDB
+```bash
 sudo systemctl start mongod
 sudo systemctl enable mongod
+```
 
 
-## Option 1: Installing using a venv
+### Create a virtual enviorment for the server
+```bash
 python3 -m venv rag-env
 source rag-env/bin/activate
-
-# Install python server
 pip install --upgrade pip
-# Get your CUDA version from: 'nvidia-smi'
-# Check the instructions at https://pytorch.org/get-started/locally/
+```
+
+### Install pyTorch
+Check the instructions at https://pytorch.org/get-started/locally/
+To get the CUDA version run: `nvidia-smi`
+```bash
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+### Install server requirements
+```bash
 pip install -r requirements.txt
+```
+
+### Open server port to the internet (check the .env file)
+```bash
+sudo ufw allow 7500/tcp
+sudo ufw reload
+```
