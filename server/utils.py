@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 # Get the root directory of the project
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Get current file, go up two
 
+data_path = os.path.join(project_root, 'data')
+server_path = os.path.join(project_root, 'server')
+
+
 # Load environment variables once at startup
 load_dotenv(os.path.join(project_root, '.env'))
 
@@ -71,7 +75,7 @@ def get_company_path(company_id: str, sub_path: str) -> str:
     sub_path = sub_path.lstrip("/\\")
 
     # Build the base path for the company
-    company_root = os.path.join(project_root, 'data', 'companies', company_id)
+    company_root = os.path.join(data_path, 'companies', company_id)
 
     # Join and normalize the full path
     target_path = os.path.normpath(os.path.join(company_root, sub_path))

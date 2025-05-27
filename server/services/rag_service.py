@@ -3,7 +3,7 @@ import re
 import json
 import torch
 import logging
-from utils import get_env_var, get_company_path
+from utils import get_env_var, get_company_path, data_path
 
 from filelock import FileLock
 
@@ -46,7 +46,7 @@ BASE_DOC_SCHEMA = {
 
 class RAGService:
     # Initialize persistent vector database (ChromaDB)
-    vector_db = chromadb.PersistentClient(path=os.path.join('data', 'databases', 'chroma_db'))
+    vector_db = chromadb.PersistentClient(path=os.path.join(data_path, 'databases', 'chroma_db'))
     doc_extractor = DocExtractor()
     llm_service = LLMService()
 
@@ -73,9 +73,7 @@ class RAGService:
         if os.path.exists(self.schemata_path):
             schemata_path = self.schemata_path
         else:
-            schemata_path = os.path.dirname(os.path.abspath(__file__)) 
-            schemata_path = os.path.join(schemata_path, 'data', 'default_doc_schemata.json')
-            schemata_path = os.path.normpath(schemata_path)
+            schemata_path = os.path.join(data_path, 'default_doc_schemata.json')
 
         with open(schemata_path, 'r', errors='ignore') as f:
             self.doc_schemata = json.loads(f.read())

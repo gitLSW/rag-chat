@@ -3,7 +3,7 @@ import shutil
 import uuid
 import json
 import logging
-from utils import project_root, get_env_var, get_company_path
+from utils import data_path, get_env_var, get_company_path
 from typing import List
 
 from mimetypes import guess_type
@@ -30,7 +30,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(project_root, 'data', 'server.log')),
+        logging.FileHandler(os.path.join(data_path, 'server.log')),
         logging.StreamHandler()
     ]
 )
