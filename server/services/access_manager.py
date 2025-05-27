@@ -72,7 +72,7 @@ class AccessManager:
         ]))
         
         self.valid_access_groups = set(result[0]['allRoles']) if result else set()
-        self.valid_access_groups.add({'admin'})
+        self.valid_access_groups.add('admin')
 
 
     def create_update_user(self, user_data, curr_user):
