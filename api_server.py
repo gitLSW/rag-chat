@@ -23,12 +23,14 @@ API_KEY = get_env_var("API_KEY")
 API_ALLOWED_IPs = get_env_var("API_ALLOWED_IPs")
 PUBLIC_KEY_URL = get_env_var("PUBLIC_KEY_SOURCE_URL")
 
+project_root = os.path.dirname(os.path.abspath(__file__))
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(os.path.join('data', 'server.log')),
+        logging.FileHandler(os.path.join(project_root, 'data', 'server.log')),
         logging.StreamHandler()
     ]
 )
@@ -143,7 +145,7 @@ async def create_doc(req: Request,
     os.makedirs(upload_dir, exist_ok=True)
 
     # Create the file path to save the uploaded PDF
-    source_path = f"{upload_dir}/{file.filename}"
+    source_path = os.path.join(upload_dir, file.filename)
 
     # Save the file
     with open(source_path, "wb") as buffer:

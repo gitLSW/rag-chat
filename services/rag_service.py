@@ -164,7 +164,7 @@ class RAGService:
         # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
         if not doc_data.get('path'):
             # Classify Document into a path if non existant
-            file_name = source_path.split('/')[-1] # Last element
+            file_name = os.path.basename(source_path)
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + file_name
 
         # Extract JSON
