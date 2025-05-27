@@ -143,7 +143,7 @@ class RAGService:
         if doc_type and not doc_type in self.doc_schemata.keys():
             raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
         
-        print("DOC_TYPE:", doc_type)
+        print("DOC_DATA:", doc_data)
 
         # Validate user access
         try:
