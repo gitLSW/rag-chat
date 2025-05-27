@@ -40,23 +40,23 @@ class TokenMiddleware(BaseHTTPMiddleware):
 
         token = credentials.credentials
         try:
-            payload = jwt.decode(token, self.public_key, algorithms=["RS256"])
+            payload = jwt.decode(token, self.public_key, algorithms=['RS256'])
         except InvalidTokenError as e1:
             try:
                 if time.time() - self._public_key_last_updated > 3600:
                     self._update_public_key()
-                    payload = jwt.decode(token, self.public_key, algorithms=["RS256"])
+                    payload = jwt.decode(token, self.public_key, algorithms=['RS256'])
                 else:
                     raise e1
             except InvalidTokenError as e2:
                 raise HTTPException(
                     status_code=401,
-                    detail=f"Invalid token after key refresh: {e2}",
-                    headers={"WWW-Authenticate": "Bearer"},
+                    detail=e2,
+                    headers={'WWW-Authenticate': 'Bearer'},
                 )
 
-        company_id = payload.get("companyId")
-        user_id = payload.get("userId")
+        company_id = payload.get('companyId')
+        user_id = payload.get('userId')
 
         if not company_id or not user_id:
             raise HTTPException(400, "Missing companyId or userId in token payload.")
