@@ -3,7 +3,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import List, Deque, Dict, AsyncGenerator, Optional
 from utils import get_env_var
-from vllm import LLM, SamplingParams
+from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
 from transformers import AutoTokenizer, AutoConfig
 from collections import defaultdict, deque
 
@@ -12,7 +12,7 @@ LLM_MODEL = get_env_var('LLM_MODEL')
 DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=4096)
 
 # Initialize the vLLM engine.
-llm = LLM(
+engine_args = AsyncEngineArgs(
     # Model parameters (https://docs.vllm.ai/en/latest/api/offline_inference/llm.html)
     model=LLM_MODEL,  # Default model name or path
         # tokenizer=None,  # Defaults to the model's tokenizer
@@ -95,6 +95,7 @@ llm = LLM(
         # enable_chunked_prefill=False,  # Chunked prefill disabled by default
         # speculative_config=None  # No configuration for speculative decoding
 )
+llm = AsyncLLMEngine.from_engine_args(engine_args)
 
 tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
 LLM_MAX_TEXT_LEN = getattr(AutoConfig.from_pretrained(LLM_MODEL), 'max_position_embeddings', tokenizer.model_max_length)
@@ -174,12 +175,12 @@ class LLMService:
         del self._current_requests[req_id]
 
 
-    def pause(self, req_id):
+    async def pause(self, req_id):
         """
         Pause an ongoing request by its request ID.
         """
         try:
-            llm.abort(req_id)
+            await llm.abort(req_id)
             return True
         except Exception as e:
             # Log or handle specific errors as needed
@@ -187,11 +188,11 @@ class LLMService:
             return False
         
 
-    def abort(self, req_id):
+    async def abort(self, req_id):
         """
         End an ongoing request by its request ID.
         """
-        success = self.pause(req_id)
+        success = await self.pause(req_id)
         if success and req_id in self._current_requests.keys():
             del self._current_requests[req_id]
         return success
