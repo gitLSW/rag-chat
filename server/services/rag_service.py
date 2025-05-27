@@ -220,7 +220,7 @@ class RAGService:
         
         doc_type = merged_doc.get('docType')
         if not doc_type and not old_doc_type:
-            raise HTTPException(422, "No docType defined.")
+            raise HTTPException(400, "No docType defined.")
 
         if doc_type != old_doc_type:
             merge_existing = False
