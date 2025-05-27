@@ -143,6 +143,8 @@ class RAGService:
         if doc_type and not doc_type in self.doc_schemata.keys():
             raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
         
+        print("DOC_TYPE:", doc_type)
+
         # Validate user access
         try:
             user.has_doc_access(doc_id)
@@ -158,10 +160,12 @@ class RAGService:
         if not doc_data.get('path'):
             # Classify Document into a path if non existant
             file_name = os.path.basename(source_path)
-            doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + file_name
+            doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
 
         # Extract JSON
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
+
+        print("DOC_TYPE:", doc_type)
 
         if is_extract_valid:
             # Overwrite extracted data with uploaded data
