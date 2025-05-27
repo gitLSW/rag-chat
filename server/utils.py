@@ -16,7 +16,7 @@ class MissingEnvVarError(Exception):
         self.var_name = var_name
 
 
-def get_env_var(env_var_name, default):
+def get_env_var(env_var_name, default=None):
     """
     Get an environment variable or raise MissingEnvVarError if not found.
     
