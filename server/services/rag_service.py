@@ -176,7 +176,8 @@ class RAGService:
         
         doc_data['docType'] = doc_type
         
-        print(doc_data)
+        print('FINAL DOC DATA:', doc_data)
+        print('Schema:', doc_schema)
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
         self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
