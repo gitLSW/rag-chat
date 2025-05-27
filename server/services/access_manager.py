@@ -144,7 +144,7 @@ class AccessManager:
     
     def validate_new_access_groups(self, access_groups):
         # Validate new_access_groups
-        if not access_group:
+        if not access_groups:
             return None
         
         access_groups = set(access_groups)
