@@ -14,7 +14,7 @@ from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
 from services.chat_websocket import router as chat_ws_router
 from middleware.auth.token_middleware import TokenMiddleware
-from middleware.auth.api_access_middlware import APIAccessMiddleware
+from server.middleware.auth.api_access_middleware import APIAccessMiddleware
 from middleware.error_handler_middleware import register_exception_handlers
 
 # Load environment variables
@@ -103,7 +103,8 @@ async def create_access_group(user_id, req: Request):
     if not body_user_id:
         user_data['id'] = user_id
     elif body_user_id != user_id:
-        raise HTTPException(400, "URL document id doesn't match request body's document id!")
+        raise HTTPException(400, "URL user id doesn't match request body's user id!")
+
     
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.access_manager.create_update_user(user_data, req.state.user)
@@ -160,7 +161,7 @@ async def create_doc(req: Request,
     except (HTTPException, Exception) as e:
         error = e
     finally:
-        shutil.rmtree(upload_dir) # The original file is no longer needed
+        shutil.rmtree(upload_dir, ignore_errors=True) # The original file is no longer needed
     
     if error:
         raise error
@@ -199,11 +200,9 @@ async def delete_doc(doc_id, req: Request):
 
 # TODO: Gather docs for download (if not downlaoding from honesty system
 @app.get('/search')
-async def search_docs(
-    question: str = Query(..., description="The search question"),
-    searchDepth: int = Query(10, ge=1, description="Search depth, default 10"),
-    req: Request = None
-):
+async def search_docs(req: Request,
+                      question: str = Query(..., description="The search question"),
+                      searchDepth: int = Query(10, ge=1, description="Search depth, default 10")):
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.find_docs(question, searchDepth, req.state.user)
 

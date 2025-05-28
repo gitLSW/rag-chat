@@ -1,4 +1,5 @@
 import os
+import json
 from dotenv import load_dotenv
 
 # Get the root directory of the project
@@ -23,37 +24,41 @@ class MissingEnvVarError(Exception):
 def get_env_var(env_var_name, default=None):
     """
     Get an environment variable or raise MissingEnvVarError if not found.
-    
-    Args:
-        env_var_name: Name of the environment variable to get
-        default: Optional default value if the variable is not required
-        
-    Returns:
-        The value of the environment variable
-        
-    Raises:
-        MissingEnvVarError: If the variable is not set and no default is provided
+    Supports int, float, bool, JSON arrays/objects.
     """
     value = os.getenv(env_var_name, default)
 
     if value is None:
         raise MissingEnvVarError(env_var_name)
     
+    # Try to parse int
     try:
         return int(value)
-    except ValueError:
+    except (ValueError, TypeError):
         pass
     
+    # Try to parse float
     try:
         return float(value)
-    except ValueError:
+    except (ValueError, TypeError):
         pass
     
-    normalized_value = value.lower()
-    boolean_descriptions = ['true', 'false']
-    if normalized_value in boolean_descriptions:
-        return normalized_value == 'true'
+    # Try to parse bool
+    normalized_value = str(value).lower()
+    if normalized_value == 'true':
+        return True
+    elif normalized_value == 'false':
+        return False
 
+    # Try to parse JSON (arrays or objects)
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, (list, dict)):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Fallback: return string as is
     return value
 
 
