@@ -378,7 +378,7 @@ class RAGService:
         
         parsed_json = None # prevents UnboundLocalError !
         try:
-            answer
+            answer = ""
             async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False, stream_full_text=False):
                 answer += chunk
 
