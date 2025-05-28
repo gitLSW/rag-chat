@@ -168,12 +168,13 @@ class RAGService:
             doc_schema = self._merge_with_base_schema(doc_schema)
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
+            doc_data['docType'] = doc_type
         else:
             doc_schema = BASE_DOC_SCHEMA
-        
-        doc_data['docType'] = doc_type
+            doc_data['docType'] = None
         
         print('FINAL DOC DATA:', doc_data)
+        print('FINAL DOC SCHEMA:', doc_schema)
         print('FINAL DOC SCHEMA:', doc_schema)
 
         # Check if doc_data is valid and insert into DB
@@ -250,7 +251,7 @@ class RAGService:
 
 
     def get_doc(self, doc_id, user):
-        doc = user.access_manager.has_doc_access(doc_id)
+        doc = user.has_doc_access(doc_id)
 
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         with open(txt_path, 'r', errors='ignore') as f:
