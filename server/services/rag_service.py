@@ -175,7 +175,6 @@ class RAGService:
         
         print('FINAL DOC DATA:', doc_data)
         print('FINAL DOC SCHEMA:', doc_schema)
-        print('FINAL DOC SCHEMA:', doc_schema)
 
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
@@ -386,6 +385,8 @@ class RAGService:
                 answer_json = answer_json.group(1)
             else:
                 raise ValueError("No JSON found in LLM response")
+            
+            print('EXTRACTED JSON:', answer_json)
             
             parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
