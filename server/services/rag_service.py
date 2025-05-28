@@ -396,6 +396,7 @@ class RAGService:
             jsonschema.validate(parsed_json, json_schema)
             return parsed_json, doc_type, json_schema, True
         except jsonschema.exceptions.ValidationError as e:
+            print('JSON Validation error:', e)
             return parsed_json, doc_type, json_schema, False
         except (ValueError, IndexError, json.JSONDecodeError) as e:
             # print(f"Failed to extract or parse JSON from model response: {e}")
