@@ -344,7 +344,7 @@ class RAGService:
         sampling_params = SamplingParams(
             temperature=0.1,
             top_p=0.4,
-            max_tokens=1024
+            max_tokens=2048
             # stop=["\n\n", "\n", "Q:", "###"]
         )
 
@@ -378,9 +378,8 @@ class RAGService:
         
         parsed_json = None # prevents UnboundLocalError !
         try:
-            answer = ""
-            async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False, stream_full_text=False):
-                answer += chunk
+            async for answer in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False, stream_full_text=True):
+                pass
 
             print('JSON EXTRACT ANSWER:', answer)
 
