@@ -52,7 +52,7 @@ USER_SCHEMA = {
             "minItems": 1
         }
     },
-    "required": ["userRoles", ],
+    "required": ['id', "accessRoles"],
     "additionalProperties": False
 }
 
