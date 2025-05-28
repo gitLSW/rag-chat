@@ -14,7 +14,7 @@ from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
 from services.chat_websocket import router as chat_ws_router
 from middleware.auth.token_middleware import TokenMiddleware
-from server.middleware.auth.api_access_middleware import APIAccessMiddleware
+from middleware.auth.api_access_middleware import APIAccessMiddleware
 from middleware.error_handler_middleware import register_exception_handlers
 
 # Load environment variables
