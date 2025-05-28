@@ -378,13 +378,13 @@ class RAGService:
         
         parsed_json = None # prevents UnboundLocalError !
         try:
-            final_answer = None
-            async for answer in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False, stream_full_text=True):
-                final_answer = answer
+            answer = None
+            async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
+                answer += chunk
 
-            print('JSON EXTRACT ANSWER:', final_answer)
+            print('JSON EXTRACT ANSWER:', answer)
 
-            answer_json = re.search(r"```json\s*(.*?)\s*```", final_answer, re.DOTALL)
+            answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
             if answer_json:
                 answer_json = answer_json.group(1)
             else:

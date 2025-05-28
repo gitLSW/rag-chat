@@ -111,16 +111,14 @@ class LLMService:
         self._current_requests: Dict[str, RequestState] = {}
 
 
-    async def query(
-        self,
-        prompt: str,
-        context: Optional[str] = None,
-        history: Optional[str] = None,
-        req_id = str(uuid.uuid4()),
-        sampling_params: Optional[SamplingParams] = None,
-        allow_chunking: bool = True,
-        stream_full_text=False
-    ) -> AsyncGenerator[str, None]:
+    async def query(self,
+                    prompt: str,
+                    context: Optional[str] = None,
+                    history: Optional[str] = None,
+                    req_id = str(uuid.uuid4()),
+                    sampling_params: Optional[SamplingParams] = None,
+                    allow_chunking: bool = True) -> AsyncGenerator[str, None]:
+        
         if sampling_params is None:
             sampling_params = DEFAULT_SAMPLING_PARAMS
 
@@ -132,7 +130,7 @@ class LLMService:
         queues: List[asyncio.Queue] = [asyncio.Queue() for _ in chunks]
 
         # Start all generators
-        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params, stream_full_text)) for i, chunk in enumerate(chunks)]
+        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params)) for i, chunk in enumerate(chunks)]
 
         # Stream outputs sequentially in chunk order
         for chunk_queue in queues:
@@ -148,7 +146,7 @@ class LLMService:
             del self._current_requests[req_id]
 
 
-    async def resume(self, req_id, stream_full_text=False):
+    async def resume(self, req_id):
         req_state = self._current_requests.get(req_id)
         if not req_state:
             raise ValueError('No request found for ' + req_id)
@@ -160,7 +158,7 @@ class LLMService:
         queues: List[asyncio.Queue] = [asyncio.Queue() for _ in chunk_states.keys()]
 
         # Start all generators
-        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params, stream_full_text)) for i, chunk in enumerate(chunk_states.values())]
+        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params)) for i, chunk in enumerate(chunk_states.values())]
 
         # Stream outputs sequentially in chunk order
         for chunk_queue in queues:
@@ -235,7 +233,7 @@ class LLMService:
         return chunks
     
 
-    async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params, stream_full_text=False):
+    async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params):
         chunk_req_id = f'{req_id}-chunk{chunk_index}'
         try:
             req = self._current_requests.get(req_id)
@@ -255,12 +253,8 @@ class LLMService:
                     token_ids = input_token_ids + output.outputs[0].token_ids
                     req.chunk_states[chunk_req_id] = token_ids[-tokenizer.model_max_length]
                 
-                # Put the text in the queue
-                if stream_full_text:
-                    await queues[chunk_index].put(output.outputs[0].text)
-                else:
-                    new_text_chunk = output.outputs[0].text[len(prev_text):]
-                    await queues[chunk_index].put(new_text_chunk)
-                    prev_text += new_text_chunk
+                new_text_chunk = output.outputs[0].text[len(prev_text):]
+                await queues[chunk_index].put(new_text_chunk) # Put the chunk in the queue
+                prev_text += new_text_chunk
         finally:
             await queues[chunk_index].put(None)  # Signal that the stream is done
