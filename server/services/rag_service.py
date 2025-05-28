@@ -382,7 +382,7 @@ class RAGService:
             
             answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
             if answer_json:
-                answer_json.group(1)
+                answer_json = answer_json.group(1)
             else:
                 raise ValueError("No JSON found in LLM response")
             
