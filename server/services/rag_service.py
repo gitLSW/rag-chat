@@ -350,7 +350,7 @@ class RAGService:
 
         prompt = f"""This is a JSON Schema which you need to fill:
 
-            {json.dumps(json_schema['properties'])}
+            {json.dumps(json_schema)}
 
             ### TASK REQUIREMENT
             You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
