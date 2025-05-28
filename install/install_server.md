@@ -5,6 +5,7 @@ sudo apt upgrade -y
 ```
 
 ### Install MongoDB
+https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-ubuntu/
 ```bash
 sudo apt-get install gnupg curl
 
