@@ -50,3 +50,8 @@ pip install -r requirements.txt
 sudo ufw allow 7500/tcp
 sudo ufw reload
 ```
+
+### Start the server:
+```bash
+bash start_server.sh
+```
