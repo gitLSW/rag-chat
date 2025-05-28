@@ -359,7 +359,7 @@ class RAGService:
 
             ### STRICT RULES FOR GENERATING OUTPUT:
             **ALWAYS PROVIDE YOUR FINAL ANSWER**:
-            - Always provide the filled JSON
+            - Always provide the filled JSON for the provided Schema
             **JSON Schema Mapping:**:
             - Carefully check to find ALL relevant information in the text like ids, names, addresses, etc.
             - Sometimes ids my be called numbers
@@ -371,7 +371,8 @@ class RAGService:
             **JSON Format Compliance:**:
             - In your answer follow the JSON Format strictly !
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
-            
+            - Keep in mind you are seeing a JSON schema, which describes how your filled JSON should be structured. You shouldn't repeat instruction fields like required or types, etc. Your task is to only provide a filled JSON which conforms to the schema.
+
             Provide your answer in the described format !!!"""
         
         print('JSON EXTRACT PROMPT:', prompt)
