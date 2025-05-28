@@ -238,7 +238,7 @@ class LLMService:
         try:
             req = self._current_requests.get(req_id)
             if req:
-                input_token_ids = chunk[-tokenizer.model_max_length] # Add input to request chunk state
+                input_token_ids = chunk[-tokenizer.model_max_length:] # Add input to request chunk state
                 req.chunk_states[chunk_req_id] = input_token_ids
 
             # Decode tokens back to string prompt for generate()
@@ -251,7 +251,7 @@ class LLMService:
                 req = self._current_requests.get(req_id) # Always get again in case it was aborted (= deleted)
                 if req:
                     token_ids = input_token_ids + output.outputs[0].token_ids
-                    req.chunk_states[chunk_req_id] = token_ids[-tokenizer.model_max_length]
+                    req.chunk_states[chunk_req_id] = token_ids[-tokenizer.model_max_length:]
                 
                 new_text_chunk = output.outputs[0].text[len(prev_text):]
                 await queues[chunk_index].put(new_text_chunk) # Put the chunk in the queue
