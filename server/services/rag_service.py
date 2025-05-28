@@ -374,6 +374,8 @@ class RAGService:
             
             Write your reasoning below here inside think tags and once you are done thinking, provide your answer in the described format !"""
         
+        print('JSON EXTRACT PROMPT:', answer_json)
+        
         parsed_json = None # prevents UnboundLocalError !
         try:
             answer = ""
