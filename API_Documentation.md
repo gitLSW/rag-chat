@@ -32,8 +32,8 @@ They are named `admin` in the System.
 {
     "type": "object",
     "properties": {
-        "userId": { "type": "string" },
-        "userRoles": {
+        "id": { "type": "string" },
+        "accessRoles": {
             "type": "array",
             "items": { "type": "string" },
             "minItems": 1
