@@ -40,7 +40,7 @@ They are named `admin` in the System.
         }
     },
     "required": ["accessRoles"],
-    "additionalProperties": False
+    "additionalProperties": false
 }
 ```
 - **Response Schema**: Success/Failure Response
