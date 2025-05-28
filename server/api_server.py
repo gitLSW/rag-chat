@@ -108,7 +108,6 @@ async def create_access_group(user_id, req: Request):
         user_data['id'] = user_id
     elif body_user_id != user_id:
         raise HTTPException(400, "URL user id doesn't match request body's user id!")
-
     
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.access_manager.create_update_user(user_data, req.state.user)
