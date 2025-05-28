@@ -56,7 +56,11 @@ DOC_DATA_SCHEMA = {
     'type': 'object',
     'properties': {
         'id': {'type': 'string'},
-        'accessGroups': {'type': 'array', 'items': {'type': 'string'}},
+        'accessGroups': {
+            'type': ['array', 'null'],
+            'items': {'type': 'string'},
+            'minItems': 1
+        },
         'path': {'type': ['string', 'null']},
         'docType': {'type': ['string', 'null']}
         # Add more fields according to the doc_type's JSON Schema
