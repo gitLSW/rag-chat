@@ -47,14 +47,17 @@ engine_args = AsyncEngineArgs(
         # allowed_local_media_path=None,  # No local media paths allowed by default
         # config_format='auto',  # Automatically detects the model's config format
         # kv_cache_dtype='auto',  # Uses the model's data type for KV cache
-    # max_model_len=512,  # Automatically derived from the model config - default: None
+    max_model_len=65_536,  # Automatically derived from the model config - default: None
         # guided_decoding_backend='xgrammar',  # Default guided decoding backend
         # logits_processor_pattern=None,  # No logits processor pattern specified
         # model_impl='auto',  # Automatically selects the model implementation
+    
+    # MUST HOLD TRUE: pipeline_parallel_size * tensor_parallel_size * data_parallel_size < NUM_GPUs
     distributed_executor_backend='mp',  # Defaults based on parallel sizes and GPU availability 'mp'= multiprocessing and 'ray' = multi-node
     pipeline_parallel_size=1,  # Single pipeline stage
     tensor_parallel_size=NUM_GPUs,  # Split LLM Layer computations horizontally across N GPUs
         # data_parallel_size=1,  # Single data parallel replica
+
         # enable_expert_parallel=False,  # Expert parallelism disabled by default
         # max_parallel_loading_workers=None,  # No specific limit on parallel loading workers
         # ray_workers_use_nsight=False,  # Nsight profiling for Ray workers disabled
