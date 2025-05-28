@@ -12,14 +12,14 @@ db_client = MongoClient(MONGO_DB_URL)
 
 class User:
     def __init__(self, user_data, company_id):
-        self.user_id = user_data['id']
-        self.user_roles = user_data['accessRoles']
+        self.id = user_data['id']
+        self.access_roles = user_data['accessRoles']
         self.company_id = company_id
 
 
     def assert_admin(self):
-        if 'admin' not in self.user_roles:
-            raise InsufficientAccessError(self.user_roles, "Insufficient access rights, permission denied. Admin rights required")
+        if 'admin' not in self.access_roles:
+            raise InsufficientAccessError(self.access_roles, "Insufficient access rights, permission denied. Admin rights required")
         
 
     def has_doc_access(self, doc_id):
@@ -31,8 +31,8 @@ class User:
         if not doc_access_groups:
             return doc # Allow everybody for a doc with access_groups None
         
-        if not any(user_access_role in doc_access_groups for user_access_role in self.user_roles):
-            raise InsufficientAccessError(self.user_roles)
+        if not any(user_access_role in doc_access_groups for user_access_role in self.access_roles):
+            raise InsufficientAccessError(self.access_roles)
         
         return doc
 
@@ -70,7 +70,7 @@ class AccessManager:
         user = User(user_data, self.company_id)
 
         self.company_db = db_client[self.company_id]
-        view_name = f'access_view_{user.user_id}'
+        view_name = f'access_view_{user.id}'
 
         # Drop existing view (cannot 'create' over it) and recreate with new match
         if view_name in self.company_db.list_collection_names():
@@ -82,7 +82,7 @@ class AccessManager:
             'pipeline': [{
                 '$match': {
                     '$or': [
-                        { 'accessGroups': { '$in': user.user_roles } },
+                        { 'accessGroups': { '$in': user.access_roles } },
                         { 'accessGroups': None },
                         { 'accessGroups': { '$exists': False } }
                     ]
@@ -91,7 +91,7 @@ class AccessManager:
         })  # :contentReference[oaicite:0]{index=0}
 
         # Create the LLM user only if missing; catch the 'already exists' error
-        username = f'llm_user_{self.company_id}_{user.user_id}'
+        username = f'llm_user_{self.company_id}_{user.id}'
         password = get_env_var(f'LLM_USER_{self.company_id}_PW')
         try:
             db_client['admin'].command({
@@ -112,14 +112,14 @@ class AccessManager:
         # The 'users' collection is not currently needed, but may be useful in later versions of the server
         # Overwrite user
         self.company_db['users'].replace_one(
-            {'id': user.user_id},
+            {'id': user.id},
             user_data,
             upsert=True
         )
         
-        self.valid_access_groups.update(user.user_roles) # Update all unique entries
+        self.valid_access_groups.update(user.access_roles) # Update all unique entries
 
-        return OKResponse(f"User {user.user_id} successfully created or updated.")
+        return OKResponse(f"User {user.id} successfully created or updated.")
     
     
     def validate_new_access_groups(self, access_groups):

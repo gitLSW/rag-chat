@@ -63,7 +63,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
 
         if user_id == 'admin':
             # The super admin was used. Without a super admin, it wouldn't be possible to register any users (including other admins)
-            user_data = { 'userId': 'admin', 'userRoles': ['admin'] }
+            user_data = { 'id': 'admin', 'accessRoles': ['admin'] }
         else:
             user_data = db_client[company_id]['users'].find_one({ '_id': user_id })
             if not user_data:

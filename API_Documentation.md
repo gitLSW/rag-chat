@@ -39,7 +39,7 @@ They are named `admin` in the System.
             "minItems": 1
         }
     },
-    "required": ["userRoles"],
+    "required": ["accessRoles"],
     "additionalProperties": False
 }
 ```

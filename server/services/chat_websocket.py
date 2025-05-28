@@ -46,7 +46,6 @@ active_chats: dict[str, LLMChat] = {}
 async def websocket_query(websocket: WebSocket):
     await websocket.accept()
     company_id = websocket.scope["state"].company_id
-    user_id = websocket.scope["state"].user_id
     user = websocket.scope["state"].user
 
     try:
@@ -67,10 +66,10 @@ async def websocket_query(websocket: WebSocket):
                     await websocket.send_text(f"[ERROR] Chat {action.chat_id} already exists")
                     continue
                 active_chats[action.chat_id] = LLMChat(
-                    userId=user_id,
+                    userId=user.id,
                     company_id=company_id,
                     chat_id=action.chat_id,
-                    user_access_roles=user.user_roles,
+                    user_access_roles=user.access_roles,
                 )
                 await websocket.send_text(f"[STARTED] Chat {action.chat_id}")
 
