@@ -172,9 +172,6 @@ class RAGService:
         else:
             doc_schema = BASE_DOC_SCHEMA
             doc_data['docType'] = None
-        
-        print('FINAL DOC DATA:', doc_data)
-        print('FINAL DOC SCHEMA:', doc_schema)
 
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
@@ -374,13 +371,9 @@ class RAGService:
             
             Provide your answer in the described format !!!"""
         
-        print('JSON EXTRACT PROMPT:', prompt)
-        
         answer = ""
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk
-
-        print('JSON EXTRACT ANSWER:', answer)
 
         parsed_json = None # prevents UnboundLocalError !
         try:
@@ -390,13 +383,11 @@ class RAGService:
             else:
                 raise ValueError("No JSON found in LLM response")
             
-            print('EXTRACTED JSON:', answer_json)
-            
             parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
             return parsed_json, doc_type, json_schema, True
         except jsonschema.exceptions.ValidationError as e:
-            print('JSON Validation error:', e)
+            print('JSON Schema Validation error:', e)
             return parsed_json, doc_type, json_schema, False
         except (ValueError, IndexError, json.JSONDecodeError) as e:
             # print(f"Failed to extract or parse JSON from model response: {e}")
