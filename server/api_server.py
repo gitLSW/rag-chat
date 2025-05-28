@@ -168,25 +168,25 @@ async def create_doc(req: Request,
 
 
 @app.put('/documents/{doc_id}')
-async def update_doc(doc_id, req: UpdateDocReq):
-    body_doc_id = req.docData.get('id')
+async def update_doc(doc_id: str, update_req: UpdateDocReq, req: Request):
+    body_doc_id = update_req.docData.get('id')
     if not body_doc_id:
-        req.docData['id'] = doc_id
+        update_req.docData['id'] = doc_id
     elif body_doc_id != doc_id:
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
-    
+
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.update_doc_data(req.docData, req.mergeExisting, req.state.user)
+    return rag_service.update_doc_data(update_req.docData, update_req.mergeExisting, req.state.user)
 
 
 @app.get('/documents/{doc_id}')
-async def get_doc(doc_id, req):
+async def get_doc(doc_id, req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.get_doc(doc_id, req.state.user)
 
 
 @app.delete('/documents/{doc_id}')
-async def delete_doc(doc_id, req):
+async def delete_doc(doc_id, req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.delete_doc(doc_id, req.state.user)
 
