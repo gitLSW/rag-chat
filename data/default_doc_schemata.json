@@ -140,7 +140,7 @@
       "supplierName",
       "deliveryAddress",
       "itemsDelivered",
-      "receiverName",
+      "receiverName"
     ]
   },
   "purchase order": {

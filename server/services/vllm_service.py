@@ -9,7 +9,7 @@ from transformers import AutoTokenizer, AutoConfig
 
 # Load environment variables
 LLM_MODEL = get_env_var('LLM_MODEL')
-DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=4096)
+DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=32_768)
 NUM_GPUs = torch.cuda.device_count()
 
 print('NUM GPUs:', NUM_GPUs)
