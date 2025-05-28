@@ -103,7 +103,7 @@ LLM_MAX_TEXT_LEN = getattr(AutoConfig.from_pretrained(LLM_MODEL), 'max_position_
 @dataclass
 class RequestState:
     sampling_params: SamplingParams
-    chunk_states: Dict[str, Deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=LLM_MAX_TEXT_LEN))) # [chunk_req_id: chunk_token_ids]
+    chunk_states: Dict[str, List] # [chunk_req_id: chunk_token_ids]
 
 
 class LLMService:
@@ -119,7 +119,8 @@ class LLMService:
         history: Optional[str] = None,
         req_id = str(uuid.uuid4()),
         sampling_params: Optional[SamplingParams] = None,
-        allow_chunking: bool = True
+        allow_chunking: bool = True,
+        stream_full_text=False
     ) -> AsyncGenerator[str, None]:
         if sampling_params is None:
             sampling_params = DEFAULT_SAMPLING_PARAMS
@@ -132,7 +133,7 @@ class LLMService:
         queues: List[asyncio.Queue] = [asyncio.Queue() for _ in chunks]
 
         # Start all generators
-        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params)) for i, chunk in enumerate(chunks)]
+        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params, stream_full_text)) for i, chunk in enumerate(chunks)]
 
         # Stream outputs sequentially in chunk order
         for chunk_queue in queues:
@@ -148,7 +149,7 @@ class LLMService:
             del self._current_requests[req_id]
 
 
-    async def resume(self, req_id):
+    async def resume(self, req_id, stream_full_text=False):
         req_state = self._current_requests.get(req_id)
         if not req_state:
             raise ValueError('No request found for ' + req_id)
@@ -160,7 +161,7 @@ class LLMService:
         queues: List[asyncio.Queue] = [asyncio.Queue() for _ in chunk_states.keys()]
 
         # Start all generators
-        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params)) for i, chunk in enumerate(chunk_states.values())]
+        tasks = [asyncio.create_task(self._stream_chunk(req_id, i, chunk, queues, sampling_params, stream_full_text)) for i, chunk in enumerate(chunk_states.values())]
 
         # Stream outputs sequentially in chunk order
         for chunk_queue in queues:
@@ -235,21 +236,32 @@ class LLMService:
         return chunks
     
 
-    async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params):
+    async def _stream_chunk(self, req_id, chunk_index, chunk, queues, sampling_params, stream_full_text=False):
         chunk_req_id = f'{req_id}-chunk{chunk_index}'
         try:
             req = self._current_requests.get(req_id)
-            req.chunk_states[chunk_req_id].extend(chunk) # Add input to request chunk state
+            if req:
+                input_token_ids = chunk[-tokenizer.model_max_length] # Add input to request chunk state
+                req.chunk_states[chunk_req_id] = input_token_ids
 
             # Decode tokens back to string prompt for generate()
             prompt_text = tokenizer.decode(chunk, skip_special_tokens=True)
 
+            prev_text = ""
             async for output in llm.generate(prompt=prompt_text,
                                              sampling_params=sampling_params,
                                              request_id=chunk_req_id):
                 req = self._current_requests.get(req_id) # Always get again in case it was aborted (= deleted)
                 if req:
-                    req.chunk_states[chunk_req_id].extend(output.outputs[0].token_ids)
-                await queues[chunk_index].put(output.outputs[0].text)
+                    token_ids = input_token_ids + output.outputs[0].token_ids
+                    req.chunk_states[chunk_req_id] = token_ids[-tokenizer.model_max_length]
+                
+                # Put the text in the queue
+                if stream_full_text:
+                    await queues[chunk_index].put(output.outputs[0].text)
+                else:
+                    new_text_chunk = output.outputs[0].text[len(prev_text):]
+                    await queues[chunk_index].put(new_text_chunk)
+                    prev_text += new_text_chunk
         finally:
             await queues[chunk_index].put(None)  # Signal that the stream is done

@@ -372,14 +372,15 @@ class RAGService:
             - In your answer follow the JSON Format strictly !
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
-            Write your reasoning below here inside think tags and once you are done thinking, provide your answer in the described format !"""
+            Provide your answer in the described format !!!"""
         
         print('JSON EXTRACT PROMPT:', prompt)
         
         parsed_json = None # prevents UnboundLocalError !
         try:
-            async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
-                answer = chunk
+            answer
+            async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False, stream_full_text=False):
+                answer += chunk
 
             print('JSON EXTRACT ANSWER:', answer)
 
