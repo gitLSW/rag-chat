@@ -1,3 +1,4 @@
+import torch
 import uuid
 import asyncio
 from dataclasses import dataclass, field
@@ -9,6 +10,8 @@ from transformers import AutoTokenizer, AutoConfig
 # Load environment variables
 LLM_MODEL = get_env_var('LLM_MODEL')
 DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=4096)
+
+num_gpus = torch.cuda.device_count()
 
 # Initialize the vLLM engine.
 engine_args = AsyncEngineArgs(
@@ -24,7 +27,7 @@ engine_args = AsyncEngineArgs(
         # enforce_eager=False,  # Allows the use of CUDA graphs for execution
         # max_seq_len_to_capture=8192,  # Maximum sequence length for CUDA graph capture
         # seed=None,  # No specific random seed applied
-    gpu_memory_utilization=0.8,  # Utilizes up to % of GPU memory
+    # gpu_memory_utilization=0.8,  # Utilizes up to % of GPU memory
         # swap_space=4,  # Allocates 4 GiB of CPU memory per GPU for swap space
         # cpu_offload_gb=0,  # No CPU offloading of model weights by default
         # block_size=None,  # Uses the default block size
@@ -48,8 +51,8 @@ engine_args = AsyncEngineArgs(
         # logits_processor_pattern=None,  # No logits processor pattern specified
         # model_impl='auto',  # Automatically selects the model implementation
         # distributed_executor_backend=None,  # Defaults based on parallel sizes and GPU availability
-        # pipeline_parallel_size=1,  # Single pipeline stage
-    # tensor_parallel_size=1,  # Split LLM Layer computations horizontally across N GPUs
+    pipeline_parallel_size=num_gpus,  # Single pipeline stage
+    tensor_parallel_size=num_gpus,  # Split LLM Layer computations horizontally across N GPUs
         # data_parallel_size=1,  # Single data parallel replica
         # enable_expert_parallel=False,  # Expert parallelism disabled by default
         # max_parallel_loading_workers=None,  # No specific limit on parallel loading workers
