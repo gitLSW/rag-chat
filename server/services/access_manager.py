@@ -9,31 +9,11 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 db_client = MongoClient(MONGO_DB_URL)
 
-USER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "userId": { "type": "string" },
-        "userRoles": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
-        }
-    },
-    "required": ["userId", "userRoles"],
-    "additionalProperties": False
-}
-
 
 class User:
     def __init__(self, user_data, company_id):
-        # Validate user_data
-        try:
-            validate(instance=user_data, schema=USER_SCHEMA)
-        except ValidationError as e:
-            raise ValueError(f"Invalid user data: {e.message}")
-        
-        self.user_id = user_data['userId']
-        self.user_roles = user_data['userRoles']
+        self.user_id = user_data['id']
+        self.user_roles = user_data['accessRoles']
         self.company_id = company_id
 
 
@@ -67,8 +47,8 @@ class AccessManager:
         # Get valid_access_groups from all users
         users_db = self.company_db['users']
         result = list(users_db.aggregate([
-            {'$unwind': '$userRoles'},
-            {'$group': {'_id': None, 'allRoles': {'$addToSet': '$userRoles'}}}
+            {'$unwind': '$accessRoles'},
+            {'$group': {'_id': None, 'allRoles': {'$addToSet': '$accessRoles'}}}
         ]))
         
         self.valid_access_groups = set(result[0]['allRoles']) if result else set()
@@ -82,7 +62,7 @@ class AccessManager:
         and tracks all seen accessGroups.
 
         Args:
-            user_data: dict with 'userId' and list of 'userRoles'
+            user_data: dict with 'id' and list of 'accessRoles'
             curr_user: the invoking user, must be 'admin'
         """
         curr_user.assert_admin() # Require admin rights
@@ -132,7 +112,7 @@ class AccessManager:
         # The 'users' collection is not currently needed, but may be useful in later versions of the server
         # Overwrite user
         self.company_db['users'].replace_one(
-            {'userId': user.user_id},
+            {'id': user.user_id},
             user_data,
             upsert=True
         )
