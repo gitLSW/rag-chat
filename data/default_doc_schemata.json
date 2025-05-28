@@ -70,17 +70,8 @@
     "required": [
       "invoiceNumber",
       "invoiceDate",
-      "dueDate",
       "vendorName",
-      "vendorAddress",
-      "vendorTaxID",
-      "customerName",
-      "customerAddress",
-      "customerTaxID",
-      "lineItems",
-      "tax",
-      "totalAmount",
-      "currency"
+      "totalAmount"
     ]
   },
   "delivery note": {
@@ -142,24 +133,14 @@
       },
       "receiverName": {
         "type": "string"
-      },
-      "receiverSignature": {
-        "type": "string"
       }
     },
     "required": [
       "deliveryNoteNumber",
-      "deliveryDate",
       "supplierName",
-      "supplierAddress",
-      "customerName",
-      "customerAddress",
       "deliveryAddress",
       "itemsDelivered",
-      "deliveryMethod",
-      "vehicleNumber",
       "receiverName",
-      "receiverSignature"
     ]
   },
   "purchase order": {

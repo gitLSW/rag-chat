@@ -13,6 +13,7 @@ DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=
 NUM_GPUs = torch.cuda.device_count()
 
 print('NUM GPUs:', NUM_GPUs)
+print('LLM MODEL:', LLM_MODEL)
 
 # Initialize the vLLM engine.
 engine_args = AsyncEngineArgs(
