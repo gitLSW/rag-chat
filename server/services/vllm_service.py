@@ -1,7 +1,7 @@
 import uuid
 import asyncio
-from dataclasses import dataclass
-from typing import List, Dict, AsyncGenerator, Optional
+from dataclasses import dataclass, field
+from typing import List, Deque, Dict, AsyncGenerator, Optional
 from utils import get_env_var
 from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
 from transformers import AutoTokenizer, AutoConfig
@@ -102,7 +102,7 @@ LLM_MAX_TEXT_LEN = getattr(AutoConfig.from_pretrained(LLM_MODEL), 'max_position_
 @dataclass
 class RequestState:
     sampling_params: SamplingParams
-    chunk_states: Dict[str, List] = dict() # [chunk_req_id: chunk_token_ids]
+    chunk_states: Dict[str, List] = field(default_factory=dict) # [chunk_req_id: chunk_token_ids]
 
 
 class LLMService:
