@@ -43,17 +43,17 @@ logger = logging.getLogger(__name__)
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
 USER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "id": { "type": "string" },
-        "accessRoles": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
+    'type': 'object',
+    'properties': {
+        'id': { 'type': 'string' },
+        'accessRoles': {
+            'type': 'array',
+            'items': { 'type': 'string' },
+            'minItems': 1
         }
     },
-    "required": ['id', "accessRoles"],
-    "additionalProperties": False
+    'required': ['id', 'accessRoles'],
+    'additionalProperties': False
 }
 
 ADD_DOC_SCHEMA_SCHEMA = {
