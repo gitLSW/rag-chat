@@ -87,7 +87,7 @@ app = FastAPI()
 
 
 # Add the HTTP middleware
-register_exception_handlers(app)
+# register_exception_handlers(app)
 app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
 app.add_middleware(
     APIAccessMiddleware,
