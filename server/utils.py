@@ -85,3 +85,24 @@ def get_company_path(company_id: str, sub_path: str) -> str:
         raise ValueError("Invalid path: Attempted to access outside of the company's directory.")
 
     return target_path
+
+
+def apply_defaults(instance: dict, schema: dict):
+    if not isinstance(instance, dict) or not isinstance(schema, dict):
+        return
+
+    properties = schema.get('properties', {})
+    for prop, subschema in properties.items():
+        if prop not in instance or instance[prop] is None:
+            if 'default' in subschema:
+                instance[prop] = subschema['default']
+        elif subschema.get('type') == 'object' and isinstance(instance.get(prop), dict):
+            # Recurse into nested object
+            apply_defaults(instance[prop], subschema)
+        elif subschema.get('type') == 'array' and isinstance(instance.get(prop), list):
+            item_schema = subschema.get('items')
+            if item_schema and isinstance(item_schema, dict):
+                for item in instance[prop]:
+                    if isinstance(item, dict):
+                        apply_defaults(item, item_schema)
+

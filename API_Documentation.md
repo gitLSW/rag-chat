@@ -96,7 +96,7 @@ If it passed, it will be added to the document database (`MongoDB`).
 Finally, the document's text content gets saved as a txt file.
 
 #### `POST /documents`
-- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If accessGroups is Null or empty, everybody has document access. If the automatic JSON extract failed for a given doc_type, the provides metadata, plain document text and paragraph embeddings will still be saved. Supported MIME file types: ```pdf, docx, odt, rtf, txt, csv, xml, json.```
+- **Purpose**: Uploads and processes a document file along with its metadata that must conform to a predefined schema. If accessGroups is null or empty, everybody has document access. If the automatic JSON extract failed, the provides metadata, plain document text and paragraph embeddings will still be saved. Supported MIME file types: ```pdf, docx, odt, rtf, txt, csv, xml, json.```
 - **Request Schema**:
 
 `Form Table`:
@@ -234,25 +234,11 @@ Now the system finds all the unique documents which the neighbours point
 
 #### `GET /search`
 - **Purpose**: Performs semantic search across documents.
-- **Request Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "question": {
-      "type": "string",
-      "description": "The search query/question"
-    },
-    "searchDepth": {
-      "type": "integer",
-      "description": "Number of results to return",
-      "default": 10
-    }
-  },
-  "required": ["question"]
-}
-```
-- **Response Schema**: Success/Failure response with array of found paragraps' document IDs, page numbers and schema types
+- **Query Parameters**:
+  - `question` (string, required): The search query/question.
+  - `searchDepth` (integer, optional, default=10): Number of similar paragraphs to find.
+- **Example Request URL**: `/search?question=your+search+query&searchDepth=30`
+- **Response Schema**: Success/Failure response with array of found paragraps' document IDs, page numbers and schema types (can differ in length to the searchDepth)
 ```json
 {
   "type": "object",

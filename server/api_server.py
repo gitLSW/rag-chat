@@ -3,13 +3,12 @@ import shutil
 import uuid
 import json
 import logging
-from utils import data_path, get_env_var, get_company_path
-from typing import List
+from utils import data_path, get_env_var, get_company_path, apply_defaults
 
 from mimetypes import guess_type
 
-from fastapi import FastAPI, Request, Form, HTTPException, File, UploadFile, WebSocket
-from pydantic import BaseModel
+from fastapi import FastAPI, Query, Request, Form, HTTPException, File, UploadFile
+from jsonschema import validate
 
 from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
@@ -38,29 +37,42 @@ logger = logging.getLogger(__name__)
 
 
 # -----------------------------
-# Request Models
+# Request Model Schemata
 # -----------------------------
 
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
 
-class SemanticSearchReq(BaseModel):
-    question: str
-    searchDepth: int = 10
+ADD_DOC_SCHEMA_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'docType': {'type': 'string'},
+        'docSchema': {'type': 'object'} # The schema which shall be defined
+    },
+    'required': ['docType', 'docSchema']
+}
 
-class AddDocSchemaReq(BaseModel):
-    docType: str
-    docSchema: dict # JSON Schema
-    
-class UpdateDocReq(BaseModel):
-    mergeExisting: bool = False
-    docData: dict # = {
-    #     id: str
-    #     accessGroups: Optional[List[str]] = oldDocData.accessGroups
-    #     path: Optional[str] = oldDocData.path
-    #     docType: Optional[str] = oldDocData.docType
-    #     # more fields according to the doc_type's JSON Schema
-    # }
+DOC_DATA_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'id': {'type': 'string'},
+        'accessGroups': {'type': 'array', 'items': {'type': 'string'}},
+        'path': {'type': ['string', 'null']},
+        'docType': {'type': ['string', 'null']}
+        # Add more fields according to the doc_type's JSON Schema
+    },
+    'required': ['id'],
+    'additionalProperties': True
+}
+
+UPDATE_DOC_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'mergeExisting': {'type': 'boolean', 'default': False},
+        'docData': DOC_DATA_SCHEMA,
+    },
+    'required': ['docData']
+}
 
 
 # -----------------------------
@@ -87,7 +99,7 @@ app.include_router(chat_ws_router) # Add /chat endpoint
 async def create_access_group(user_id, req: Request):
     user_data = await req.json()
 
-    body_user_id = req.docData.get('id')
+    body_user_id = user_data.get('id')
     if not body_user_id:
         user_data['id'] = user_id
     elif body_user_id != user_id:
@@ -98,9 +110,12 @@ async def create_access_group(user_id, req: Request):
 
 
 @app.post('/documentSchemata')
-async def add_doc_schema(req: AddDocSchemaReq):
+async def add_doc_schema(req: Request):
+    body = await req.json()
+    validate(body, ADD_DOC_SCHEMA_SCHEMA)
+
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.add_json_schema_type(req.docType, req.docSchema, req.state.user)
+    return rag_service.add_json_schema_type(body['docType'], body['docSchema'], req.state.user)
 
 
 @app.delete('/documentSchemata/{doc_type}')
@@ -115,30 +130,16 @@ async def create_doc(req: Request,
                      forceOcr: bool = Form(False),
                      allowOverride: bool = Form(True),
                      docData: str = Form(...)):
-    # THIS IS HOW THE FORM IS SET UP: {
-    #     file: File,
-    #     forceOcr: bool,
-    #     allowOverride: bool,
-    #     docData: {
-    #         id: str
-    #         accessGroups: List[str]
-    #         path: Optional[str] = ML classified path
-    #         docType: Optional[str] = ML identified docType
-    #         # more fields according to the doc_type's JSON Schema
-    #     }
-    # }
-
-    try:
-        docData = json.loads(docData)
-    except Exception as e:
-        raise HTTPException(400, f"Invalid JSON in docData: {str(e)}")
-
     mime_type, _ = guess_type(file.filename)
 
     # Check if MIME type is supported by DocExtractor
     supported_mime_types = DocExtractor._get_handlers().keys()
     if mime_type not in supported_mime_types:
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
+
+    docData = json.loads(docData)
+    apply_defaults(docData, DOC_DATA_SCHEMA)
+    validate(docData, DOC_DATA_SCHEMA)
 
     # Ensure the directory exists
     upload_dir = get_company_path(req.state.user.company_id, f'uploads/{uuid.uuid4()}')
@@ -168,15 +169,20 @@ async def create_doc(req: Request,
 
 
 @app.put('/documents/{doc_id}')
-async def update_doc(doc_id: str, update_req: UpdateDocReq, req: Request):
-    body_doc_id = update_req.docData.get('id')
+async def update_doc(doc_id: str, req: Request):
+    body = await req.json()
+
+    body_doc_id = body['docData'].get('id')
     if not body_doc_id:
-        update_req.docData['id'] = doc_id
+        body['docData']['id'] = doc_id
     elif body_doc_id != doc_id:
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
+    
+    apply_defaults(body, UPDATE_DOC_SCHEMA)
+    validate(body, UPDATE_DOC_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.update_doc_data(update_req.docData, update_req.mergeExisting, req.state.user)
+    return rag_service.update_doc_data(body['docData'], body['mergeExisting'], req.state.user)
 
 
 @app.get('/documents/{doc_id}')
@@ -191,11 +197,15 @@ async def delete_doc(doc_id, req: Request):
     return rag_service.delete_doc(doc_id, req.state.user)
 
 
-# TODO: Gather docs for download (if not downlaoding from honesty system)
+# TODO: Gather docs for download (if not downlaoding from honesty system
 @app.get('/search')
-async def search_docs(req: SemanticSearchReq):
+async def search_docs(
+    question: str = Query(..., description="The search question"),
+    searchDepth: int = Query(10, ge=1, description="Search depth, default 10"),
+    req: Request = None
+):
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.find_docs(req.question, req.search_depth, req.state.user)
+    return rag_service.find_docs(question, searchDepth, req.state.user)
 
 
 # main.py
