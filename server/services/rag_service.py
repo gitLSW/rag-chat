@@ -376,14 +376,14 @@ class RAGService:
         
         print('JSON EXTRACT PROMPT:', prompt)
         
+        answer = ""
+        async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
+            answer += chunk
+
+        print('JSON EXTRACT ANSWER:', answer)
+
         parsed_json = None # prevents UnboundLocalError !
         try:
-            answer = ""
-            async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
-                answer += chunk
-
-            print('JSON EXTRACT ANSWER:', answer)
-
             answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
             if answer_json:
                 answer_json = answer_json.group(1)
