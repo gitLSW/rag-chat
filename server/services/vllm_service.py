@@ -28,7 +28,7 @@ engine_args = AsyncEngineArgs(
         # enforce_eager=False,  # Allows the use of CUDA graphs for execution
         # max_seq_len_to_capture=8192,  # Maximum sequence length for CUDA graph capture
         # seed=None,  # No specific random seed applied
-    # gpu_memory_utilization=0.8,  # Utilizes up to % of GPU memory
+    gpu_memory_utilization=0.95,  # Utilizes up to % of GPU memory
         # swap_space=4,  # Allocates 4 GiB of CPU memory per GPU for swap space
         # cpu_offload_gb=0,  # No CPU offloading of model weights by default
         # block_size=None,  # Uses the default block size
@@ -51,7 +51,7 @@ engine_args = AsyncEngineArgs(
         # guided_decoding_backend='xgrammar',  # Default guided decoding backend
         # logits_processor_pattern=None,  # No logits processor pattern specified
         # model_impl='auto',  # Automatically selects the model implementation
-    distributed_executor_backend='mp',  # Defaults based on parallel sizes and GPU availability
+    distributed_executor_backend='mp',  # Defaults based on parallel sizes and GPU availability 'mp'= multiprocessing and 'ray' = multi-node
     pipeline_parallel_size=1,  # Single pipeline stage
     tensor_parallel_size=NUM_GPUs,  # Split LLM Layer computations horizontally across N GPUs
         # data_parallel_size=1,  # Single data parallel replica
