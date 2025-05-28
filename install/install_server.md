@@ -35,7 +35,8 @@ pip install --upgrade pip
 ```
 
 ### Install pyTorch
-Check the instructions at https://pytorch.org/get-started/locally/.\
+Check the instructions at https://pytorch.org/get-started/locally/
+
 To get the CUDA version run: `nvidia-smi`
 ```bash
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
