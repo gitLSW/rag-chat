@@ -1,3 +1,4 @@
+import torch
 import uuid
 import asyncio
 from dataclasses import dataclass, field
@@ -8,9 +9,10 @@ from transformers import AutoTokenizer, AutoConfig
 
 # Load environment variables
 LLM_MODEL = get_env_var('LLM_MODEL')
-NUM_GPUs = get_env_var('NUM_GPUs')
-
 DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=4096)
+NUM_GPUs = torch.cuda.device_count()
+
+print('NUM GPUs:', NUM_GPUs)
 
 # Initialize the vLLM engine.
 engine_args = AsyncEngineArgs(
@@ -49,7 +51,7 @@ engine_args = AsyncEngineArgs(
         # guided_decoding_backend='xgrammar',  # Default guided decoding backend
         # logits_processor_pattern=None,  # No logits processor pattern specified
         # model_impl='auto',  # Automatically selects the model implementation
-        # distributed_executor_backend=None,  # Defaults based on parallel sizes and GPU availability
+    distributed_executor_backend='mp',  # Defaults based on parallel sizes and GPU availability
     pipeline_parallel_size=NUM_GPUs,  # Single pipeline stage
     tensor_parallel_size=NUM_GPUs,  # Split LLM Layer computations horizontally across N GPUs
         # data_parallel_size=1,  # Single data parallel replica
