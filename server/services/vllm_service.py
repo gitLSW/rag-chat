@@ -11,6 +11,8 @@ from transformers import AutoTokenizer, AutoConfig
 LLM_MODEL = get_env_var('LLM_MODEL')
 DEFAULT_SAMPLING_PARAMS = SamplingParams(temperature=0.3, top_p=0.6, max_tokens=32_768)
 NUM_GPUs = torch.cuda.device_count()
+if NUM_GPUs == 0:
+    raise RuntimeError("No GPU available.")
 
 print('NUM GPUs:', NUM_GPUs)
 print('LLM MODEL:', LLM_MODEL)
