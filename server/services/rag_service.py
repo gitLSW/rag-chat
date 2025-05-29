@@ -278,7 +278,7 @@ class RAGService:
         if res.deleted_count == 0:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist.")
 
-        return OKResponse(f"Successfully deleted Document {doc_id}", res.raw_result)
+        return OKResponse(f"Successfully deleted Document {doc_id}")
     
 
     def find_docs(self, message, n_results, user):

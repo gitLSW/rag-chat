@@ -151,7 +151,7 @@ class AccessManager:
         if res.deleted_count == 0:
             raise HTTPException(404, f"No user with id {user_id} found.")
 
-        return OKResponse(f"User {user_id} successfully deleted.", res.raw_result)
+        return OKResponse(f"User {user_id} successfully deleted.")
 
     
     def validate_new_access_groups(self, access_groups):
