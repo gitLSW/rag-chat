@@ -35,7 +35,7 @@ class MongoDBConnector:
 
         try:
             username = f'llm_user_{self.company_id}_{user_id}'
-            password = get_env_var(f'LLM_USER_{self.company_id}_PW')
+            password = get_env_var(f'LLM_USER_PW')
 
             client = MongoClient(
                 MONGO_DB_URL,

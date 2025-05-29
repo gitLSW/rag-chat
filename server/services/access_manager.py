@@ -92,7 +92,7 @@ class AccessManager:
 
         # Create the LLM user only if missing; catch the 'already exists' error
         username = f'llm_user_{self.company_id}_{user.id}'
-        password = get_env_var(f'LLM_USER_{self.company_id}_PW')
+        password = get_env_var(f'LLM_USER_PW')
         try:
             db_client['admin'].command({
                 'createUser': username,
