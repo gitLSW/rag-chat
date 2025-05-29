@@ -252,6 +252,7 @@ class RAGService:
 
     def get_doc(self, doc_id, user):
         doc = user.has_doc_access(doc_id)
+        del doc['_id'] # Remove the mongoDB id
 
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         with open(txt_path, 'r', errors='ignore') as f:
