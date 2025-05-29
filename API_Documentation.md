@@ -38,7 +38,8 @@ This "super admin" can be used to create the first admin user for a new company.
         "accessRoles": {
             "type": "array",
             "items": { "type": "string" },
-            "minItems": 1
+            "minItems": 1,
+            "description": "The user's access groups permitting him to view or modify documents within his groups.",
         }
     },
     "required": ["id", "accessRoles"],
@@ -137,7 +138,7 @@ Finally, the document's text content gets saved as a txt file.
       "type": ["array", "null"],
       "items": {"type": "string"},
       "minItems": 1,
-      "description": "List of groups with access to this document"
+      "description": "List of user access role groups with access to this document"
     }
   },
   "required": ["id"],
@@ -159,7 +160,7 @@ Finally, the document's text content gets saved as a txt file.
         "path": {"type": "string"},
         "docType": {"type": ["string", "null"]},
         "accessGroups": {
-          "type": "array",
+          "type": ["array", null],
           "items": {"type": "string"},
           "minItems": 1
         }
@@ -171,7 +172,7 @@ Finally, the document's text content gets saved as a txt file.
 ```
 
 #### `PUT /documents/{doc_id}`
-- **Purpose**: Updates an existing document's metadata.
+- **Purpose**: Updates an existing document's metadata. The updated document data must conform to the JSON schema of its document type.
 - **Request Schema**:
 ```json
 {
@@ -179,21 +180,34 @@ Finally, the document's text content gets saved as a txt file.
   "properties": {
     "mergeExisting": {
       "type": "boolean",
-      "description": "Whether to merge with existing data",
+      "description": "Whether to merge with existing data. Fields will still overwrite fields of the same name on the old documents. Arrays of same named fields will not be merged.",
       "default": false
     },
     "docData": {
       "type": "object",
       "properties": {
-        "path": {"type": ["string", "null"]},
-        "docType": {"type": ["string", "null"]},
+        "id": {
+          "type": "string",
+          "description": "Optional unique identifier for the document. If existant, it must match the doc_id in the URL."
+        },
+        "path": {
+          "type": ["string", "null"],
+          "description": "Optional path for organizing documents"
+        },
+        "docType": {
+          "type": ["string", "null"],
+          "description": "Document type that matches a predefined schema"
+        },
         "accessGroups": {
-          "type": "array",
+          "type": ["array", "null"],
           "items": {"type": "string"},
-          "minItems": 1
+          "minItems": 1,
+          "description": "List of user access role groups with access to this document"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": {
+        "description": "Additional properties must match the schema defined for the docType"
+      }
     }
   },
   "required": ["docData"]
