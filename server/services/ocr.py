@@ -10,7 +10,7 @@ TEXT_RECOGNITION_MODEL = 'vitstr_base'  # Model for recognizing characters withi
 NUM_GPUs = torch.cuda.device_count()
 if NUM_GPUs == 0:
     raise RuntimeError("No GPU available.")
-DEVICE = torch.device(f'cuda:{NUM_GPUs - 1}') # The OCR must run on the last gpu where there is space
+DEVICE = torch.device(f'cuda:{NUM_GPUs - 1}') # The OCR should run on the last gpu where there is space
 
 class OCR:
     def __init__(self):
