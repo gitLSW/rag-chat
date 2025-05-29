@@ -119,7 +119,7 @@ class AccessManager:
         
         self.valid_access_groups.update(user.access_roles) # Update all unique entries
 
-        return OKResponse(f"User {user.id} successfully created or updated.")
+        return OKResponse(f"User {user.id} successfully created or updated.", user_data)
     
     
     def validate_new_access_groups(self, access_groups):
