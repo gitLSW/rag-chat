@@ -18,11 +18,13 @@ The public key will be retreived automatically from the Auth server's URL, which
 
 ## Endpoints
 
-### Access groups
+### Users
 Access groups for each company must be used by at least one user previous to using them.
 Every document has a list of accessGroups associated with it.
 Administrator roles are always added automatically by the system.
-They are named `admin` in the System. 
+They are named `admin` in the System.
+A "super admin" access is provided by the system when the token's user_id is "admin".
+This "super admin" can be used to create the first admin user for a new company.
 
 #### `POST /users`
 - **Purpose**: Creates or overwrites a user with access groups for document permissions.
