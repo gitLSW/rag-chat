@@ -101,44 +101,12 @@ def get_company_path(company_id: str, sub_path: str) -> str:
 file_lock = RWLock()
 
 async def safe_async_read(filepath):
-    """
-    Safely read a file with shared read lock (allows concurrent reads)
-    
-    Args:
-        filepath: Path to the file to read
-        
-    Returns:
-        Contents of the file as string
-        
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        IOError: For other file operations errors
-    """
     async with file_lock.reader:
-        try:
-            async with aiofiles.open(filepath, mode='r') as f:
+        async with aiofiles.open(filepath, mode='r') as f:
                 return await f.read()
-        except FileNotFoundError as e:
-            raise e
-        except Exception as e:
-            raise IOError(f"Failed to read file {filepath}: {str(e)}")
-
 
 async def safe_async_write(filepath, content):
-    """
-    Safely write to a file with exclusive write lock
-    
-    Args:
-        filepath: Path to the file to write to
-        content: String content to write
-        
-    Raises:
-        IOError: If file operations fail
-    """
     async with file_lock.writer:
-        try:
-            async with aiofiles.open(filepath, mode='w') as f:
+        async with aiofiles.open(filepath, mode='w') as f:
                 await f.write(content)
-        except Exception as e:
-            raise IOError(f"Failed to write to file {filepath}: {str(e)}")
 
