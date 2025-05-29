@@ -157,7 +157,6 @@ async def create_doc(req: Request,
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
 
     docData = json.loads(docData)
-    fill_default(docData, DOC_DATA_SCHEMA)
     validate(docData, DOC_DATA_SCHEMA)
 
     # Ensure the directory exists

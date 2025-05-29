@@ -127,9 +127,7 @@ class RAGService:
     
 
     async def create_doc(self, source_path, doc_data, force_ocr, allow_override, user):
-        doc_id = doc_data.get('id')
-        if not doc_id:
-            raise HTTPException(400, "docData must contain an 'id'")
+        doc_id = doc_data['id']
         
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         if not allow_override and os.path.exists(txt_path):
@@ -197,10 +195,7 @@ class RAGService:
 
 
     def update_doc_data(self, doc_data, merge_existing, user):
-        doc_id = doc_data.get('id')
-        if not doc_id:
-            raise HTTPException(400, "docData must contain an 'id'")
-        
+        doc_id = doc_data['id']
         old_doc = user.has_doc_access(doc_id)
         
         old_doc_type = old_doc.get('docType')
