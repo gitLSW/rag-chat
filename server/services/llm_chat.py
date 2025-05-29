@@ -6,7 +6,7 @@ import aiofiles
 from datetime import datetime
 from collections import defaultdict
 from typing import AsyncGenerator, Optional, Dict
-from utils import get_env_var, get_company_path
+from utils import get_env_var, get_company_path, safe_async_read
 from pymongo import MongoClient
 from vllm import SamplingParams
 from services.vllm_service import LLMService
@@ -199,8 +199,7 @@ class LLMChat:
                     # Loads and summarizes a single document.
                     txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
                     try:
-                        async with aiofiles.open(txt_path, mode='r') as f:
-                            doc_text = await f.read()
+                        doc_text = await safe_async_read(txt_path)
                     except FileNotFoundError:
                         return '' # TODO: Maybe throw exception
 
