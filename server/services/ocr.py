@@ -4,8 +4,8 @@ from doctr.io import DocumentFile
 from doctr.models import ocr_predictor  # OCR = Optical Character Recognition, extracts text from images or PDFs
 
 # Configuration
-TEXT_DETECTION_MODEL = 'fast_base'  # Model for detecting where text is on the page
-TEXT_RECOGNITION_MODEL = 'crnn_vgg16_bn'  # Model for recognizing characters within the detected text regions
+TEXT_DETECTION_MODEL = 'db_resnet50'  # Model for detecting where text is on the page
+TEXT_RECOGNITION_MODEL = 'vitstr_base'  # Model for recognizing characters within the detected text regions
 
 DEVICE = torch.device('cuda:0') # The OCR must run on a gpu or it will seg fault.
 

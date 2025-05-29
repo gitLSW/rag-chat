@@ -407,7 +407,7 @@ class RAGService:
         print(f"Paragraph: {doc_text[:60]}... → Best Match: {best_type} ({best_score:.4f})")
         
         # Only assign a type if it scored above a certain threshhold
-        if 0.2 <= best_score:
+        if best_score < 0.2:
             return None, None
 
         return self.doc_schemata[best_type], best_type
