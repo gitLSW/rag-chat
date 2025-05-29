@@ -113,16 +113,9 @@ app.add_middleware(
 app.include_router(chat_ws_router) # Add /chat endpoint
 
 
-@app.post('/users/{user_id}')
-async def create_user(user_id, req: Request):
+@app.post('/users')
+async def create_user(req: Request):
     user_data = await req.json()
-
-    body_user_id = user_data.get('id')
-    if not body_user_id:
-        user_data['id'] = user_id
-    elif body_user_id != user_id:
-        raise HTTPException(400, "URL user id doesn't match request body's user id!")
-    
     validate(user_data, USER_SCHEMA)
     
     rag_service = get_company_rag_service(req.state.user.company_id)
