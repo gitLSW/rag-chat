@@ -404,7 +404,7 @@ class RAGService:
         # Find best match
         best_type, best_score = max(similarity_scores.items(), key=lambda x: x[1])
 
-        print(f"Paragraph: {doc_text[:200]}... → Best Match: {best_type} ({best_score:.4f})")
+        print(f"Text: {doc_text[:200]}... → Best Match: {best_type} ({best_score:.4f})")
         
         # Only assign a type if it scored above a certain threshhold
         if best_score < 0.2:
