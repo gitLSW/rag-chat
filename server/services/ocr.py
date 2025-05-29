@@ -7,7 +7,10 @@ from doctr.models import ocr_predictor  # OCR = Optical Character Recognition, e
 TEXT_DETECTION_MODEL = 'db_resnet50'  # Model for detecting where text is on the page
 TEXT_RECOGNITION_MODEL = 'vitstr_base'  # Model for recognizing characters within the detected text regions
 
-DEVICE = torch.device('cuda:0') # The OCR must run on a gpu or it will seg fault.
+NUM_GPUs = torch.cuda.device_count()
+if NUM_GPUs == 0:
+    raise RuntimeError("No GPU available.")
+DEVICE = torch.device(f'cuda:{NUM_GPUs - 1}') # The OCR must run on the last gpu where there is space
 
 class OCR:
     def __init__(self):
