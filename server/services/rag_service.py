@@ -81,7 +81,7 @@ class RAGService:
         self.docs_db = client[company_id]['docs']
 
 
-    def add_json_schema_type(self, doc_type, json_schema, user):
+    async def add_json_schema_type(self, doc_type, json_schema, user):
         user.assert_admin()
         
         if doc_type in self.doc_schemata.keys():
@@ -234,7 +234,7 @@ class RAGService:
         return OKResponse(f"Successfully updated Document {doc_id}", updated_doc)
 
 
-    def get_doc(self, doc_id, user):
+    async def get_doc(self, doc_id, user):
         doc = user.has_doc_access(doc_id)
         del doc['_id'] # Remove the mongoDB id
 

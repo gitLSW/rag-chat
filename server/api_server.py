@@ -134,7 +134,7 @@ async def add_doc_schema(req: Request):
     validate(body, ADD_DOC_SCHEMA_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.add_json_schema_type(body['docType'], body['docSchema'], req.state.user)
+    return await rag_service.add_json_schema_type(body['docType'], body['docSchema'], req.state.user)
 
 
 @app.delete('/documentSchemata/{doc_type}')
@@ -206,7 +206,7 @@ async def update_doc(doc_id: str, req: Request):
 @app.get('/documents/{doc_id}')
 async def get_doc(doc_id, req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.get_doc(doc_id, req.state.user)
+    return await rag_service.get_doc(doc_id, req.state.user)
 
 
 @app.delete('/documents/{doc_id}')
