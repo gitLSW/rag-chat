@@ -83,7 +83,47 @@ def register_exception_handlers(app):
     async def type_error_handler(request: Request, exc: TypeError):
         logger.warning(f"TypeError: {exc}")
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Invalid input type")})
-
+    
+    @app.exception_handler(aiofiles.os.error)
+    async def aiofiles_os_error_handler(request: Request, exc: aiofiles.os.error):
+        logger.error(f"aiofiles OS Error: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Filesystem operation failed")})
+    
+    @app.exception_handler(IsADirectoryError)
+    async def is_a_directory_error_handler(request: Request, exc: IsADirectoryError):
+        logger.warning(f"IsADirectoryError: {exc}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Path is a directory, not a file")})
+    
+    @app.exception_handler(NotADirectoryError)
+    async def not_a_directory_error_handler(request: Request, exc: NotADirectoryError):
+        logger.warning(f"NotADirectoryError: {exc}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Path is not a directory")})
+    
+    @app.exception_handler(TimeoutError)
+    async def timeout_error_handler(request: Request, exc: TimeoutError):
+        logger.error(f"TimeoutError: {exc}")
+        return JSONResponse(status_code=status.HTTP_504_GATEWAY_TIMEOUT, content={"detail": get_exc_message(exc, "Operation timed out")})
+    
+    @app.exception_handler(asyncio.TimeoutError)
+    async def asyncio_timeout_error_handler(request: Request, exc: asyncio.TimeoutError):
+        logger.error(f"Asyncio TimeoutError: {exc}")
+        return JSONResponse(status_code=status.HTTP_504_GATEWAY_TIMEOUT, content={"detail": get_exc_message(exc, "Async operation timed out")})
+    
+    @app.exception_handler(BlockingIOError)
+    async def blocking_io_error_handler(request: Request, exc: BlockingIOError):
+        logger.error(f"BlockingIOError: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Non-blocking operation would block")})
+    
+    @app.exception_handler(io.UnsupportedOperation)
+    async def io_unsupported_operation_handler(request: Request, exc: io.UnsupportedOperation):
+        logger.warning(f"UnsupportedOperation: {exc}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Unsupported file operation")})
+    
+    @app.exception_handler(aiorwlock.Exc)
+    async def aiorwlock_error_handler(request: Request, exc: aiorwlock.Exc):
+        logger.error(f"RWLock Error: {exc}")
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Locking mechanism failed")})
+        
     @app.exception_handler(MemoryError)
     async def memory_error_handler(request: Request, exc: MemoryError):
         logger.critical(f"MemoryError: {exc}")
