@@ -49,11 +49,10 @@
               "type": "number"
             }
           },
-          "required": [
-            "description",
-            "quantity",
-            "unitPrice",
-            "totalPrice"
+          "required": ["description"],
+          "anyOf": [
+            { "required": ["unitPrice", "quantity"] },
+            { "required": ["totalPrice"] }
           ]
         }
       },
@@ -64,14 +63,17 @@
         "type": "number"
       },
       "currency": {
-        "type": "string"
+        "type": "string",
+        "default": "EUR"
       }
     },
     "required": [
       "invoiceNumber",
       "invoiceDate",
       "vendorName",
-      "totalAmount"
+      "customerName",
+      "totalAmount",
+      "currency"
     ]
   },
   "delivery note": {
@@ -119,9 +121,7 @@
           },
           "required": [
             "description",
-            "quantity",
-            "unitOfMeasure",
-            "batchNumber"
+            "quantity"
           ]
         }
       },
@@ -138,9 +138,9 @@
     "required": [
       "deliveryNoteNumber",
       "supplierName",
+      "customerName",
       "deliveryAddress",
-      "itemsDelivered",
-      "receiverName"
+      "itemsDelivered"
     ]
   },
   "purchase order": {
@@ -153,10 +153,10 @@
         "type": "string",
         "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$"
       },
-      "buyerName": {
+      "customerName": {
         "type": "string"
       },
-      "buyerAddress": {
+      "customerAddress": {
         "type": "string"
       },
       "supplierName": {
@@ -178,12 +178,15 @@
             },
             "unitPrice": {
               "type": "number"
+            },
+            "totalPrice": {
+              "type": "number"
             }
           },
-          "required": [
-            "description",
-            "quantity",
-            "unitPrice"
+          "required": [ "description" ],
+          "anyOf": [
+            { "required": ["unitPrice", "quantity"] },
+            { "required": ["totalPrice"] }
           ]
         }
       },
@@ -191,7 +194,8 @@
         "type": "number"
       },
       "currency": {
-        "type": "string"
+        "type": "string",
+        "default": "EUR"
       },
       "deliveryDate": {
         "type": "string",
@@ -201,14 +205,10 @@
     "required": [
       "poNumber",
       "poDate",
-      "buyerName",
-      "buyerAddress",
       "supplierName",
-      "supplierAddress",
-      "itemsOrdered",
+      "customerName",
       "totalAmount",
-      "currency",
-      "deliveryDate"
+      "currency"
     ]
   },
   "receipt": {
@@ -224,7 +224,7 @@
       "payerName": {
         "type": "string"
       },
-      "payeeName": {
+      "vendorName": {
         "type": "string"
       },
       "items": {
@@ -239,10 +239,7 @@
               "type": "number"
             }
           },
-          "required": [
-            "description",
-            "amount"
-          ]
+          "required": ["description"]
         }
       },
       "totalAmount": {
@@ -252,17 +249,15 @@
         "type": "string"
       },
       "currency": {
-        "type": "string"
+        "type": "string",
+        "default": "EUR"
       }
     },
     "required": [
       "receiptNumber",
       "receiptDate",
-      "payerName",
-      "payeeName",
-      "items",
+      "vendorName",
       "totalAmount",
-      "paymentMethod",
       "currency"
     ]
   },
@@ -292,7 +287,8 @@
         "type": "number"
       },
       "currency": {
-        "type": "string"
+        "type": "string",
+        "default": "EUR"
       }
     },
     "required": [
@@ -301,7 +297,6 @@
       "relatedInvoiceNumber",
       "supplierName",
       "customerName",
-      "reason",
       "amount",
       "currency"
     ]
@@ -349,12 +344,14 @@
       }
     },
     "required": [
-      "employeeName",
-      "employeeID",
       "weekStartDate",
       "entries",
       "totalHours",
       "approvedBy"
+    ],
+    "anyOf": [
+      { "required": ["employeeName"] },
+      { "required": ["employeeID"] }
     ]
   },
   "payment confirmation": {
@@ -380,7 +377,8 @@
         "type": "string"
       },
       "currency": {
-        "type": "string"
+        "type": "string",
+        "default": "EUR"
       },
       "relatedInvoiceNumber": {
         "type": "string"
@@ -392,7 +390,6 @@
       "amount",
       "payer",
       "payee",
-      "paymentMethod",
       "currency",
       "relatedInvoiceNumber"
     ]
