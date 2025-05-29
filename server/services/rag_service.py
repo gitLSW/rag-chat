@@ -73,8 +73,9 @@ class RAGService:
         else:
             schemata_path = os.path.join(data_path, 'default_doc_schemata.json')
 
-        schemata_str = await safe_async_read(schemata_path)
-        self.doc_schemata = json.loads(schemata_str)
+        # No need for filelock, only one RAGService exists per schemata file
+        with open(schemata_path, 'r', errors='ignore') as f:
+            self.doc_schemata = json.loads(f.read())
 
         # Create or connect to database
         client = MongoClient(MONGO_DB_URL)
@@ -107,7 +108,7 @@ class RAGService:
         return OKResponse(f"Successfully added new JSON schema for {doc_type}", json_schema)
 
 
-    def delete_json_schema_type(self, doc_type, user):
+    async def delete_json_schema_type(self, doc_type, user):
         user.assert_admin()
         
         if self.docs_db.find_one({ 'doc_type': doc_type }):

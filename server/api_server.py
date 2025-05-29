@@ -140,7 +140,7 @@ async def add_doc_schema(req: Request):
 @app.delete('/documentSchemata/{doc_type}')
 async def delete_doc_schema(doc_type, req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.delete_json_schema_type(doc_type, req.state.user)
+    return await rag_service.delete_json_schema_type(doc_type, req.state.user)
 
 
 @app.post('/documents')

@@ -146,7 +146,7 @@ class DocExtractor:
     @staticmethod
     def _handle_rtf(file_path):
         try:
-            # No file lock required, because each upload will create a new unique folder for its uploaded file
+            # No file lock needed, because each upload will create a new unique file path and never write to it again
             with open(file_path, 'r', errors='ignore') as file:
                 text = rtf_to_text(file.read())
                 return [(None, p) for p in DocExtractor._split_into_paragraphs(text)]
@@ -157,7 +157,7 @@ class DocExtractor:
     @staticmethod
     def _handle_plain_text(file_path):
         try:
-            # No file lock required, because each upload will create a new unique folder for its uploaded file
+            # No file lock needed, because each upload will create a new unique file path and never write to it again
             with open(file_path, 'r', errors='ignore') as f:
                 text = f.read()
                 return [(None, p) for p in DocExtractor._split_into_paragraphs(text)]
