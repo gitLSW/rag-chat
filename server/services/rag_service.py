@@ -173,7 +173,7 @@ class RAGService:
         self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
         # In case of override, remove all old embedding entries
-        self.vector_db.delete(where={ 'doc_id': doc_id })
+        self.vector_db.delete(where={ 'docId': doc_id })
         for page_num, paragraph in paragraphs:
             # Convert paragraph into an embedding (vector representation)
             block_embedding = RAGService.embedding_model.encode(paragraph)
@@ -250,7 +250,7 @@ class RAGService:
         user.has_doc_access(doc_id)
 
         # Delete from vector DB
-        self.vector_db.delete(where={ 'doc_id': doc_id })
+        self.vector_db.delete(where={ 'docId': doc_id })
 
         # Delete file
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
@@ -273,7 +273,7 @@ class RAGService:
             n_results (int): Number of top-matching results to return.
 
         Returns:
-            list: Metadata entries (doc_id, page_num and doc_type) for the top matches.
+            list: Metadata entries (doc_id, page_num and doc_type) for the top paragraph matches.
         """
         # Convert user message into an embedding vector
         message_embedding = RAGService.embedding_model.encode(message).tolist()
@@ -284,9 +284,9 @@ class RAGService:
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         
         valid_docs_data = set()
-        for doc_data in nearest_neighbors:
+        for paragraph_data in nearest_neighbors:
             try:
-                doc_id = doc_data['id']
+                doc_id = paragraph_data['docId']
                 user.has_doc_access(doc_id)
             except DocumentNotFoundError:
                 logger.warning(f"Corrupt data. VectorDB is referencing a missing doc with id {doc_id} for company {self.company_id} !")
@@ -294,8 +294,9 @@ class RAGService:
             except InsufficientAccessError:
                 continue
             
-            if not any(lambda doc: doc == doc_data for doc in valid_docs_data):
-                valid_docs_data.append(doc_data)
+            # Only add unique paragraph references
+            if not any(lambda doc: doc == paragraph_data for doc in valid_docs_data):
+                valid_docs_data.append(paragraph_data)
 
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
