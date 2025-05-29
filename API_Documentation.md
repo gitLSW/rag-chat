@@ -45,6 +45,12 @@ They are named `admin` in the System.
 ```
 - **Response Schema**: Success/Failure Response
 
+#### `DELETE /users/{user_id}`
+- **Purpose**: Deletes an existing user.
+- **Access Control**: Requires `admin` role
+- **Request Schema**: `None`
+- **Response Schema**: Success/Failure Response
+
 
 ### Document Schemata
 The system automatically validates extracted and uploded document metadata against the previously defined JSON schemata.
@@ -75,7 +81,7 @@ If too many schemata are registered (= too much text for the LLM), no new ones w
 
 #### `DELETE /documentSchemata/{doc_type}`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
-- **Access Control**: Requires admin role
+- **Access Control**: Requires `admin` role
 - **Request Schema**: `None`
 - **Response Schema**: Success/Failure Response
 

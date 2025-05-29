@@ -55,7 +55,7 @@ class AccessManager:
         self.valid_access_groups.add('admin')
 
 
-    def create_update_user(self, user_data, curr_user):
+    def create_overwrite_user(self, user_data, curr_user):
         """
         Creates or updates a MongoDB‐backed LLM user and a single per-user view,
         which filters docs to any of the user's roles. Also upserts user metadata
@@ -68,8 +68,7 @@ class AccessManager:
         curr_user.assert_admin() # Require admin rights
 
         user = User(user_data, self.company_id)
-
-        self.company_db = db_client[self.company_id]
+        
         view_name = f'access_view_{user.id}'
 
         # Drop existing view (cannot 'create' over it) and recreate with new match
@@ -91,11 +90,11 @@ class AccessManager:
         })  # :contentReference[oaicite:0]{index=0}
 
         # Create the LLM user only if missing; catch the 'already exists' error
-        username = f'llm_user_{self.company_id}_{user.id}'
+        llm_username = f'llm_user_{self.company_id}_{user.id}'
         password = get_env_var(f'LLM_USER_PW')
         try:
             db_client['admin'].command({
-                'createUser': username,
+                'createUser': llm_username,
                 'pwd': password,
                 'roles': [{
                     'role': 'read',
@@ -121,6 +120,39 @@ class AccessManager:
 
         return OKResponse(f"User {user.id} successfully created or updated.", user_data)
     
+
+    def delete_user(self, user_id, curr_user):
+        """
+        Deletes a MongoDB‐backed LLM user and their per-user view.
+
+        Args:
+            user_id: The ID of the user to delete.
+            curr_user: The invoking user, must be 'admin'.
+        """
+        curr_user.assert_admin()  # Require admin rights
+
+        # Drop the user's view if it exists
+        view_name = f'access_view_{user_id}'
+        if view_name in self.company_db.list_collection_names():
+            self.company_db[view_name].drop()
+
+        # Drop the LLM user from MongoDB admin db
+        llm_username = f'llm_user_{self.company_id}_{user_id}'
+        try:
+            db_client['admin'].command({'dropUser': llm_username})
+        except OperationFailure as e:
+            if e.code == 11:  # UserNotFound
+                pass  # It's okay, user already gone
+            else:
+                raise e
+
+        # Delete the user metadata from the 'users' collection
+        res = self.company_db['users'].delete_one({'id': user_id})
+        if res.deleted_count == 0:
+            raise HTTPException(404, f"No user with id {user_id} found.")
+
+        return OKResponse(f"User {user_id} successfully deleted.", res.raw_result)
+
     
     def validate_new_access_groups(self, access_groups):
         # Validate new_access_groups

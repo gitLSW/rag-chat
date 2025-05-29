@@ -119,7 +119,10 @@ class RAGService:
             raise HTTPException(409, f"Cannot delete schema '{doc_type}' because it was already used to extract a document.")
         
         lock = FileLock(self.schemata_path)
-        doc_schema = self.doc_schemata[doc_type]
+        doc_schema = self.doc_schemata.get(doc_type)
+        if not doc_schema:
+            raise HTTPException(404, f"No schema for document type {doc_type} found.")
+        
         with lock:
             del self.doc_schemata[doc_type]
             with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
@@ -273,7 +276,7 @@ class RAGService:
         # Delete from json DB
         res = self.docs_db.delete_one({ '_id': doc_id })
         if res.deleted_count == 0:
-            raise HTTPException(404, f"Doc {doc_id} doesn't exist and thus couldn't be removed.")
+            raise HTTPException(404, f"Doc {doc_id} doesn't exist.")
 
         return OKResponse(f"Successfully deleted Document {doc_id}", res.raw_result)
     

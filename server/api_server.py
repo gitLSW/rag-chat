@@ -119,7 +119,13 @@ async def create_user(req: Request):
     validate(user_data, USER_SCHEMA)
     
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.access_manager.create_update_user(user_data, req.state.user)
+    return rag_service.access_manager.create_overwrite_user(user_data, req.state.user)
+
+
+@app.delete('/users/{user_id}')
+async def delete_user(user_id, req: Request):
+    rag_service = get_company_rag_service(req.state.user.company_id)
+    return rag_service.access_manager.delete_user(user_id, req.state.user)
 
 
 @app.post('/documentSchemata')
