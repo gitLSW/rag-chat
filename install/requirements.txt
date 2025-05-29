@@ -6,6 +6,7 @@ fastapi
 pyjwt
 cryptography
 jsonschema
+jsonschema-fill-default
 pymongo
 chromadb
 sentence-transformers

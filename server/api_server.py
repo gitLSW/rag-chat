@@ -3,7 +3,8 @@ import shutil
 import uuid
 import json
 import logging
-from utils import data_path, get_env_var, get_company_path, apply_defaults
+from utils import data_path, get_env_var, get_company_path
+from jsonschema_fill_default import fill_default
 
 from mimetypes import guess_type
 
@@ -157,7 +158,7 @@ async def create_doc(req: Request,
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
 
     docData = json.loads(docData)
-    apply_defaults(docData, DOC_DATA_SCHEMA)
+    fill_default(docData, DOC_DATA_SCHEMA)
     validate(docData, DOC_DATA_SCHEMA)
 
     # Ensure the directory exists
@@ -191,13 +192,13 @@ async def create_doc(req: Request,
 async def update_doc(doc_id: str, req: Request):
     body = await req.json()
 
-    body_doc_id = body['docData'].get('id')
+    body_doc_id = body.get('docData', {}).get('id')
     if not body_doc_id:
         body['docData']['id'] = doc_id
     elif body_doc_id != doc_id:
         raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
-    apply_defaults(body, UPDATE_DOC_SCHEMA)
+    fill_default(body, UPDATE_DOC_SCHEMA)
     validate(body, UPDATE_DOC_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
