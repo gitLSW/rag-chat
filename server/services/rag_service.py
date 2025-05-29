@@ -73,7 +73,7 @@ class RAGService:
         else:
             schemata_path = os.path.join(data_path, 'default_doc_schemata.json')
 
-        # No need for filelock, only one RAGService exists per schemata file
+        # No file lock needed, only one RAGService exists per schemata file
         with open(schemata_path, 'r', errors='ignore') as f:
             self.doc_schemata = json.loads(f.read())
 
