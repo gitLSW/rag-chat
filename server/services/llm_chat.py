@@ -200,8 +200,8 @@ class LLMChat:
                     txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
                     try:
                         doc_text = await safe_async_read(txt_path)
-                    except FileNotFoundError:
-                        return '' # TODO: Maybe throw exception
+                    except Exception:
+                        return "" # TODO: Maybe throw exception
 
                     message = f"Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}"
                     
