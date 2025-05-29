@@ -156,7 +156,7 @@ class RAGService:
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
 
         # Extract JSON
-        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(paragraphs, doc_type)
+        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
 
         if is_extract_valid:
             # Build final schema
@@ -301,7 +301,7 @@ class RAGService:
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
 
-    async def extract_json(self, paragraphs, doc_type=None):
+    async def extract_json(self, doc_text, doc_type=None):
         """
         Extracts a filled JSON object from LLM output based on a schema and checks if all fields are filled.
 
@@ -316,12 +316,10 @@ class RAGService:
                 - dict: The JSON schema used to validate it
                 - bool: Whether all schema fields were filled.
         """
-        paragraph_texts = map(lambda paragraph: paragraph[1], paragraphs)
-
         if doc_type:
             json_schema = self.doc_schemata.get(doc_type)
         else:
-            json_schema, doc_type = self._identify_doc_type(paragraph_texts)
+            json_schema, doc_type = self._identify_doc_type(doc_text)
 
         if not json_schema:
             return None, doc_type, None, False
@@ -340,7 +338,7 @@ class RAGService:
             ### TASK REQUIREMENT
             You are a json extractor. You are tasked with extracting the relevant information needed to fill the JSON schema from the text below.
             
-            {'/n/n'.join(paragraph_texts)}
+            {doc_text}
 
             ### STRICT RULES FOR GENERATING OUTPUT:
             **ALWAYS PROVIDE YOUR FINAL ANSWER**:
@@ -382,7 +380,7 @@ class RAGService:
             return None, doc_type, json_schema, False
     
 
-    def _identify_doc_type(self, paragraphs):
+    def _identify_doc_type(self, doc_text):
         from collections import defaultdict
 
         # Precompute schema embeddings
@@ -391,46 +389,28 @@ class RAGService:
 
         vote_counts = defaultdict(int)
         valid_vote_count = 0
+        
+        doc_embedding = RAGService.embedding_model.encode(doc_text)
 
-        for paragraph in paragraphs:
-            paragraph_embedding = RAGService.embedding_model.encode(paragraph)
-
-            # Compare paragraph to all schema embeddings
-            similarity_scores = {
-                doc_type: util.pytorch_cos_sim(
-                    torch.tensor(paragraph_embedding).unsqueeze(0),
-                    torch.tensor(schema_embedding).unsqueeze(0)
-                ).item()
-                for doc_type, schema_embedding in self.schemata_embeddings.items()
-            }
-
-            # Find best match
-            best_type, best_score = max(similarity_scores.items(), key=lambda x: x[1])
-
-            print(f"Paragraph: {paragraph[:60]}... → Best Match: {best_type} ({best_score:.4f})")
-
-            # Count vote only if above threshold
-            if 0.2 <= best_score:
-                vote_counts[best_type] += 1
-                valid_vote_count += 1
-
-        if valid_vote_count == 0:
-            return None, None  # No reliable match
-
-        # Normalize vote counts by valid votes
-        normalized_scores = {
-            doc_type: count / valid_vote_count
-            for doc_type, count in vote_counts.items()
+        # Compare the alignment of the document's embedding vector to every schema's embedding vector via the cosine similarity check
+        similarity_scores = {
+            doc_type: util.pytorch_cos_sim(
+                torch.tensor(doc_embedding).unsqueeze(0),
+                torch.tensor(schema_embedding).unsqueeze(0)
+            ).item()
+            for doc_type, schema_embedding in self.schemata_embeddings.items()
         }
 
-        # Select document type with highest normalized score
-        final_type, max_normalized_score = max(normalized_scores.items(), key=lambda x: x[1])
+        # Find best match
+        best_type, best_score = max(similarity_scores.items(), key=lambda x: x[1])
+
+        print(f"Paragraph: {doc_text[:60]}... → Best Match: {best_type} ({best_score:.4f})")
         
-        # If a document's best potential type didn't score above 40% of all the document's paragraphs, it is too ambigous to categorize.
-        if max_normalized_score < 0.4:
+        # Only assign a type if it scored above a certain threshhold
+        if 0.2 <= best_score:
             return None, None
 
-        return self.doc_schemata[final_type], final_type
+        return self.doc_schemata[best_type], best_type
 
     
     def _merge_with_base_schema(self, json_schema):

@@ -94,9 +94,8 @@ The system aims to provide a semantic search and metadata extraction from natura
 After uploading a file, the system extracts its text as a string via different extraction libraries or an OCR, if the file is a scanned PDF (page contains a image).
 The extracted text gets persisted and split into paragraphs and the paragraphs get vectorized by the `BERT Sentence Transformer`.
 These paragraph vector embeddings get saved alongside the exact page and documentId in a VectorDB (`ChromaDB`).
-If no document metadata or type was provided the system will automatically try to find a document type by comparing the sentence emebddings of each paragraph to every previously defined JSON schema, by checking the alignment of the vectors via the dot-product.
-Only if they align above a certain threshold, will the document type receive a score point.
-After normalizing the scores for each document schema type, the document will be labelled by the highest scoring document type, as long as it scored above 20% of its paragraphs.
+If no document metadata or type was provided the system will automatically try to find a document type by comparing the alignment of the document's emebdding vector to every previously defined JSON schema's embedding vector via the dot-product.
+Only if they align above a certain threshold, the document will get assigned a type.
 If a document type was provided or automatically determined, a document metadata extraction will be performed.
 The LLM (provided locally by `vLLM`) will be queried to fill the associated JSON schema of the document's type.
 The extracted JSON metadata will be merged with and overwritten by the uploaded document metadata.
