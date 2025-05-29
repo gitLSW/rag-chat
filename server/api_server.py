@@ -190,11 +190,13 @@ async def create_doc(req: Request,
 async def update_doc(doc_id: str, req: Request):
     body = await req.json()
 
-    body_doc_id = body.get('docData', {}).get('id')
-    if not body_doc_id:
-        body['docData']['id'] = doc_id
-    elif body_doc_id != doc_id:
-        raise HTTPException(400, "URL document id doesn't match request body's document id!")
+    doc_data = body.get('docData')
+    if doc_data is dict:
+        body_doc_id = doc_data.get('id')
+        if not body_doc_id:
+            body['docData']['id'] = doc_id
+        elif body_doc_id != doc_id:
+            raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
     fill_default(body, UPDATE_DOC_SCHEMA)
     validate(body, UPDATE_DOC_SCHEMA)
