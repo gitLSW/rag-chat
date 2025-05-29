@@ -3,9 +3,7 @@ import re
 import json
 import torch
 import logging
-from utils import get_env_var, get_company_path, data_path
-
-from filelock import FileLock
+from utils import get_env_var, get_company_path, data_path, safe_async_read, safe_async_write
 
 import jsonschema
 from fastapi import HTTPException
@@ -75,8 +73,8 @@ class RAGService:
         else:
             schemata_path = os.path.join(data_path, 'default_doc_schemata.json')
 
-        with open(schemata_path, 'r', errors='ignore') as f:
-            self.doc_schemata = json.loads(f.read())
+        schemata_str = await safe_async_read(schemata_path)
+        self.doc_schemata = json.loads(schemata_str)
 
         # Create or connect to database
         client = MongoClient(MONGO_DB_URL)
@@ -101,10 +99,7 @@ class RAGService:
         if int(LLM_MAX_TEXT_LEN * 0.75) < len(doc_schemata_tokens):
             raise HTTPException(409, "Too many json schemata are registered at this company. The LLM will not be able to properly extract data for so many classes.")
         
-        lock = FileLock(self.schemata_path)
-        with lock:
-            with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
-                f.write(doc_schemata_str)
+        await safe_async_write(self.schemata_path, doc_schemata_str)
         
         if self.schemata_embeddings:
             self._update_schemata_embeddings()
@@ -118,15 +113,12 @@ class RAGService:
         if self.docs_db.find_one({ 'doc_type': doc_type }):
             raise HTTPException(409, f"Cannot delete schema '{doc_type}' because it was already used to extract a document.")
         
-        lock = FileLock(self.schemata_path)
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
             raise HTTPException(404, f"No schema for document type {doc_type} found.")
         
-        with lock:
-            del self.doc_schemata[doc_type]
-            with open(self.schemata_path, 'w') as f: # TODO: Check if this raises an exception, it should
-                f.write(json.dumps(self.doc_schemata))
+        del self.doc_schemata[doc_type]
+        await safe_async_write(self.schemata_path, json.dumps(self.doc_schemata))
         
         if self.schemata_embeddings:
             self._update_schemata_embeddings()
@@ -199,10 +191,7 @@ class RAGService:
             )
 
         # Save the extracted content in .txt file
-        lock = FileLock(txt_path)
-        with lock:
-            with open(txt_path, 'w') as f: # TODO: Check if this raises an exception, it should
-                f.write(doc_text)
+        await safe_async_write(txt_path, doc_text)
 
         return OKResponse(f"Successfully processed Document {doc_id}", doc_data)
 
@@ -255,10 +244,7 @@ class RAGService:
         del doc['_id'] # Remove the mongoDB id
 
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
-        with open(txt_path, 'r', errors='ignore') as f:
-            doc_text = f.read()
-        
-        doc['text'] = doc_text
+        doc['text'] = await safe_async_read(txt_path)
         
         return OKResponse(f"Successfully retrieved Document {doc_id}", doc)
         
