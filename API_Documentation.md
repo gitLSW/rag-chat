@@ -146,7 +146,7 @@ Finally, the document's text content gets saved as a txt file.
   }
 }
 ```
-- **Response Schema**: Success/Failure response with whe added document's metadata
+- **Response Schema**: Success/Failure response with the added document's metadata and extracted text
 ```json
 {
   "type": "object",
