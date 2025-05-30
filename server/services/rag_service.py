@@ -294,7 +294,7 @@ class RAGService:
             except InsufficientAccessError:
                 continue
             
-            # Only add unique paragraph references
+            # Only add unique document references
             if not any(lambda doc: doc == paragraph_data for doc in valid_docs_data):
                 valid_docs_data.append(paragraph_data)
 
