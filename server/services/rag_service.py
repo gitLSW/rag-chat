@@ -191,7 +191,9 @@ class RAGService:
 
         # Save the extracted content in .txt file
         await safe_async_write(txt_path, doc_text)
-
+        
+        doc_data['text'] = doc_text # Add doc_text to response
+        
         return OKResponse(f"Successfully processed Document {doc_id}", doc_data)
 
 
