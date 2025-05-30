@@ -283,7 +283,7 @@ class RAGService:
         # Return metadata of top matching results (e.g., file path and page number)
         nearest_neighbors = results['metadatas'][0] if results['metadatas'] else []
         
-        valid_docs_data = set()
+        valid_docs_data = []
         for paragraph_data in nearest_neighbors:
             try:
                 doc_id = paragraph_data['docId']
