@@ -12,7 +12,6 @@ __pycache__/
 # DB
 chroma_db/
 mongo_db/
-companies/
 databases/
 
 # Logging

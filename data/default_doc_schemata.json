@@ -49,10 +49,21 @@
               "type": "number"
             }
           },
-          "required": ["description"],
+          "required": [
+            "description"
+          ],
           "anyOf": [
-            { "required": ["unitPrice", "quantity"] },
-            { "required": ["totalPrice"] }
+            {
+              "required": [
+                "unitPrice",
+                "quantity"
+              ]
+            },
+            {
+              "required": [
+                "totalPrice"
+              ]
+            }
           ]
         }
       },
@@ -76,7 +87,7 @@
       "currency"
     ]
   },
-  "deliveryNote": {
+  "delivery note": {
     "type": "object",
     "properties": {
       "deliveryNoteNumber": {
@@ -143,7 +154,7 @@
       "itemsDelivered"
     ]
   },
-  "purchaseOrder": {
+  "purchase order": {
     "type": "object",
     "properties": {
       "poNumber": {
@@ -183,10 +194,21 @@
               "type": "number"
             }
           },
-          "required": [ "description" ],
+          "required": [
+            "description"
+          ],
           "anyOf": [
-            { "required": ["unitPrice", "quantity"] },
-            { "required": ["totalPrice"] }
+            {
+              "required": [
+                "unitPrice",
+                "quantity"
+              ]
+            },
+            {
+              "required": [
+                "totalPrice"
+              ]
+            }
           ]
         }
       },
@@ -239,7 +261,9 @@
               "type": "number"
             }
           },
-          "required": ["description"]
+          "required": [
+            "description"
+          ]
         }
       },
       "totalAmount": {
@@ -261,7 +285,7 @@
       "currency"
     ]
   },
-  "creditNote": {
+  "credit note": {
     "type": "object",
     "properties": {
       "creditNoteNumber": {
@@ -350,11 +374,19 @@
       "approvedBy"
     ],
     "anyOf": [
-      { "required": ["employeeName"] },
-      { "required": ["employeeID"] }
+      {
+        "required": [
+          "employeeName"
+        ]
+      },
+      {
+        "required": [
+          "employeeID"
+        ]
+      }
     ]
   },
-  "paymentConfirmation": {
+  "payment confirmation": {
     "type": "object",
     "properties": {
       "paymentID": {
@@ -392,6 +424,88 @@
       "payee",
       "currency",
       "relatedInvoiceNumber"
+    ]
+  },
+  "sales offer": {
+    "type": "object",
+    "properties": {
+      "offerNumber": {
+        "type": "string"
+      },
+      "offerDate": {
+        "type": "string",
+        "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$"
+      },
+      "validUntilDate": {
+        "type": "string",
+        "pattern": "^\\d{2}\\.\\d{2}\\.\\d{4}$"
+      },
+      "vendorName": {
+        "type": "string"
+      },
+      "vendorAddress": {
+        "type": "string"
+      },
+      "customerName": {
+        "type": "string"
+      },
+      "customerAddress": {
+        "type": "string"
+      },
+      "itemsOffered": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer"
+            },
+            "unitPrice": {
+              "type": "number"
+            },
+            "totalPrice": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "description"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "unitPrice",
+                "quantity"
+              ]
+            },
+            {
+              "required": [
+                "totalPrice"
+              ]
+            }
+          ]
+        }
+      },
+      "totalAmount": {
+        "type": "number"
+      },
+      "currency": {
+        "type": "string",
+        "default": "EUR"
+      },
+      "termsAndConditions": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "offerNumber",
+      "offerDate",
+      "vendorName",
+      "customerName",
+      "totalAmount",
+      "currency"
     ]
   }
 }
