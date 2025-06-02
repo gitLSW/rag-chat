@@ -61,7 +61,7 @@ DOC_DATA_SCHEMA = {
             'items': {'type': 'string'},
             'minItems': 1
         },
-        'path': {'type': ['string', 'null']},
+        # 'path': {'type': ['string', 'null']},
         'docType': {'type': ['string', 'null']}
         # Add more fields according to the doc_type's JSON Schema
     },

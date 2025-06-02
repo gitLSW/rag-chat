@@ -231,8 +231,8 @@ class RAGService:
             updated_doc['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
         
         # If merge wasn't allowed and doc_data is missing a path, take the old one
-        if not updated_doc.get('path'):
-            updated_doc['path'] = old_doc['path']
+        # if not updated_doc.get('path'):
+        #     updated_doc['path'] = old_doc['path']
         
         jsonschema.validate(updated_doc, doc_schema)
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
@@ -372,6 +372,8 @@ class RAGService:
         answer = ""
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk
+
+        print(answer)
 
         parsed_json = None # prevents UnboundLocalError !
         try:
