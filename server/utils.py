@@ -9,6 +9,7 @@ from aiorwlock import RWLock
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Get current file, go up two
 
 data_path = os.path.join(project_root, 'data')
+logs_path = os.path.join(project_root, 'logs')
 server_path = os.path.join(project_root, 'server')
 
 
