@@ -118,11 +118,6 @@ def register_exception_handlers(app):
         logger.warning(f"UnsupportedOperation: {exc}")
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Unsupported file operation")})
     
-    @app.exception_handler(aiorwlock.Exc)
-    async def aiorwlock_error_handler(request: Request, exc: aiorwlock.Exc):
-        logger.error(f"RWLock Error: {exc}")
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Locking mechanism failed")})
-        
     @app.exception_handler(MemoryError)
     async def memory_error_handler(request: Request, exc: MemoryError):
         logger.critical(f"MemoryError: {exc}")
