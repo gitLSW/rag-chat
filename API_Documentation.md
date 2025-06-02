@@ -161,7 +161,7 @@ Finally, the document's text content gets saved as a txt file.
   }
 }
 ```
-- **Response Schema**: Success/Failure response with the added document's metadata
+- **Response Schema**: Success/Failure response with the added document's metadata and extracted text
 ```json
 {
   "type": "object",
@@ -171,6 +171,7 @@ Finally, the document's text content gets saved as a txt file.
       "type": "object",
       "properties": {
         "id": {"type": "string"},
+        "text": {"type": "string"},
         "path": {"type": "string"},
         "docType": {"type": ["string", "null"]},
         "accessGroups": {
@@ -241,10 +242,10 @@ Finally, the document's text content gets saved as a txt file.
     "data": {
       "type": "object",
       "properties": {
-        "text": {"type": "string"},
         "id": {"type": "string"},
         "path": {"type": "string"},
         "docType": {"type": ["string", "null"]},
+        "text": {"type": "string"},
         "accessGroups": {
           "type": "array",
           "items": {"type": "string"},
