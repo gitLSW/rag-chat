@@ -373,8 +373,6 @@ class RAGService:
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk
 
-        print(answer)
-
         parsed_json = None # prevents UnboundLocalError !
         try:
             answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
@@ -426,8 +424,10 @@ class RAGService:
         
         answer = ""
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
-            answer += chunk        
-
+            answer += chunk     
+        
+        print(answer)
+        
         doc_type = None # prevents UnboundLocalError !
         json_schema = None # prevents UnboundLocalError !
         parsed_json = None # prevents UnboundLocalError !
