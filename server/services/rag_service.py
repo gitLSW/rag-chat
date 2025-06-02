@@ -64,7 +64,11 @@ class RAGService:
         self.company_id = company_id
         self.access_manager = get_access_manager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
-        self.doc_path_classifier = DocPathClassifier(company_id)
+        
+        try:
+            self.doc_path_classifier = DocPathClassifier(company_id)
+        except FileNotFoundError:
+            self.doc_path_classifier = None
 
         self.schemata_embeddings = None
         self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
@@ -154,7 +158,7 @@ class RAGService:
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         
         # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
-        if not doc_data.get('path'):
+        if self.doc_path_classifier and not doc_data.get('path'):
             # Classify Document into a path if non existant
             file_name = os.path.basename(source_path)
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name

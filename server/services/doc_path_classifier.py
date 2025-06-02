@@ -13,7 +13,7 @@ class DocPathClassifier:
             self.vectorizer = joblib.load(os.path.join(classifier_dir, 'vectorizer.pkl'))
             self.classifier = joblib.load(os.path.join(classifier_dir, 'classifier.pkl'))
         except FileNotFoundError:
-            raise HTTPException(404, f"No path classifier for company {company_id} found. Ask the provider to train you one.")
+            raise FileNotFoundError(f"No path classifier for company {company_id} found. Ask the provider to train you one.")
 
     def classify_doc(self, content):
         # Vectorize the input and predict.
