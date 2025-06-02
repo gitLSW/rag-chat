@@ -47,3 +47,7 @@ echo "  sudo systemctl stop ${FASTAPI_SERVICE_NAME}"
 echo ""
 echo "To restart the FastAPI server:"
 echo "  sudo systemctl restart ${FASTAPI_SERVICE_NAME}"
+
+
+# Streams the server output
+sudo journalctl -u rag-fastapi-server -f
