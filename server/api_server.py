@@ -43,20 +43,6 @@ logger = logging.getLogger(__name__)
 
 # Every req header must contain a Bearer token in which the Authorization server encoded the user's company_id and access role
 # and every endpoint for the CPU server (= all endpoints, except /chat) must additonally contain a x-api-key key.
-USER_SCHEMA = {
-    'type': 'object',
-    'properties': {
-        'id': { 'type': 'string' },
-        'accessRoles': {
-            'type': 'array',
-            'items': { 'type': 'string' },
-            'minItems': 1
-        }
-    },
-    'required': ['id', 'accessRoles'],
-    'additionalProperties': False
-}
-
 ADD_DOC_SCHEMA_SCHEMA = {
     'type': 'object',
     'properties': {
@@ -117,8 +103,6 @@ app.include_router(chat_ws_router) # Add /chat endpoint
 @app.post('/users')
 async def create_user(req: Request):
     user_data = await req.json()
-    validate(user_data, USER_SCHEMA)
-    
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.access_manager.create_overwrite_user(user_data, req.state.user)
 

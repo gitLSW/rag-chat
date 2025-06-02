@@ -1,3 +1,4 @@
+import logging
 from utils import get_env_var
 from fastapi import HTTPException
 from pymongo import MongoClient
@@ -9,14 +10,17 @@ MONGO_DB_URL = get_env_var('MONGO_DB_URL')
 
 db_client = MongoClient(MONGO_DB_URL)
 
+logger = logging.getLogger(__name__)
+
 
 class User:
     def __init__(self, user_data, company_id):
         self.id = user_data.get('id')
         self.access_roles = user_data.get('accessRoles')
         self.company_id = company_id
-        if not self.id or not self.access_roles:
-            raise HTTPException(400, "User must contain an 'id' and 'accessRoles'")
+        
+        if not self.id or not self.access_roles or company_id:
+            raise HTTPException(400, "User must contain an 'id', 'accessRoles' and 'companyId'")
 
 
     def assert_admin(self):
@@ -116,6 +120,8 @@ class AccessManager:
         
         self.valid_access_groups.update(user.access_roles) # Update all unique entries
 
+        logger.info(f"User '{curr_user.id}' at '{curr_user.company_id}' created or overwrote user '{user.id}'")
+
         return OKResponse(f"User {user.id} successfully created or updated.", user_data)
     
 
@@ -148,6 +154,8 @@ class AccessManager:
         res = self.company_db['users'].delete_one({'id': user_id})
         if res.deleted_count == 0:
             raise HTTPException(404, f"No user with id {user_id} found.")
+
+        logger.info(f"User '{curr_user.id}' at '{curr_user.company_id}' deleted user '{user_id}'")
 
         return OKResponse(f"User {user_id} successfully deleted.")
 

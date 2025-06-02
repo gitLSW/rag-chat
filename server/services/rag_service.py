@@ -132,6 +132,8 @@ class RAGService:
         if self.schemata_embeddings:
             self._update_schemata_embeddings()
         
+        logger.info(f"User '{user.id}' at '{user.company_id}' deleted doc schema '{doc_type}'")
+        
         return OKResponse(f"Successfully deleted JSON schema for '{doc_type}'", doc_schema)
     
 
@@ -241,6 +243,8 @@ class RAGService:
         
         jsonschema.validate(updated_doc, doc_schema)
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
+
+        logger.info(f"User '{user.id}' at '{user.company_id}' updated doc '{doc_id}'")
         
         return OKResponse(f"Successfully updated Document {doc_id}", updated_doc)
 
@@ -270,6 +274,8 @@ class RAGService:
         res = self.docs_db.delete_one({ '_id': doc_id })
         if res.deleted_count == 0:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist.")
+
+        logger.info(f"User '{user.id}' at '{user.company_id}' deleted doc '{doc_id}'")
 
         return OKResponse(f"Successfully deleted Document {doc_id}")
     
