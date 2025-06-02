@@ -11,13 +11,13 @@ from services.api_responses import OKResponse, InsufficientAccessError, Document
 
 from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
-from sentence_transformers import SentenceTransformer, util # Pretrained model to convert text into numerical vectors (embeddings)
+from sentence_transformers import SentenceTransformer # Pretrained model to convert text into numerical vectors (embeddings)
 
 from services.access_manager import get_access_manager
 from vllm import SamplingParams
 from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
-from services.doc_type_classifier import DocTypeClassifier
+# from services.doc_type_classifier import DocTypeClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,11 @@ class RAGService:
         self.access_manager = get_access_manager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         
-        try:
-            self.doc_type_classifier = DocTypeClassifier(company_id)
-        except FileNotFoundError:
-            self.doc_type_classifier = None
+        # TODO: Add a classifer trained on the docTypes
+        # try:
+        #     self.doc_type_classifier = DocTypeClassifier(company_id)
+        # except FileNotFoundError:
+        #     self.doc_type_classifier = None
 
         self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
         if os.path.exists(self.schemata_path):
@@ -99,7 +100,7 @@ class RAGService:
         self.doc_schemata[doc_type] = json_schema
         doc_schemata_str = json.dumps(self.doc_schemata)
         doc_schemata_tokens = tokenizer.encode(doc_schemata_str, add_special_tokens=False)
-        if int(LLM_MAX_TEXT_LEN * 0.75) < len(doc_schemata_tokens):
+        if int(LLM_MAX_TEXT_LEN * 0.5) < len(doc_schemata_tokens):
             raise HTTPException(409, "Too many json schemata are registered at this company. The LLM will not be able to properly extract data for so many classes.")
         
         await safe_async_write(self.schemata_path, doc_schemata_str)
@@ -150,7 +151,13 @@ class RAGService:
 
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path, force_ocr)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
-        
+    
+        # Retrain the classifier based on the exsting data, every time a human selects a doc type manually
+        # if doc_type and 500 < self.docs_db.countDocuments({}):
+        #     txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
+        #     text = await safe_async_read(txt_path)
+        #     self.doc_type_classifier.train(texts, doc_types) # TODO: Add train function
+
         # Extract JSON
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
 
@@ -237,7 +244,7 @@ class RAGService:
 
     async def get_doc(self, doc_id, user):
         doc = user.has_doc_access(doc_id)
-        del doc['_id'] # Remove the mongoDB id
+        del doc['_id'] # Remove the mongoDB id from the response
 
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         doc['text'] = await safe_async_read(txt_path)
@@ -327,10 +334,10 @@ class RAGService:
             )
 
         if not doc_type:
-            if self.doc_type_classifier:
-                doc_type = self.doc_type_classifier.classify_doc(doc_text)
-            else:
-                return await self.identify_and_extract_json(doc_text, sampling_params)
+            # if self.doc_type_classifier:
+            #     doc_type = self.doc_type_classifier.classify_doc(doc_text)
+            # else:
+            return await self.identify_and_extract_json(doc_text, sampling_params)
 
         json_schema = self.doc_schemata.get(doc_type)
         if not json_schema:
@@ -410,6 +417,7 @@ class RAGService:
             - In your answer follow the JSON Format strictly !
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
+            Keep in mind you are working for {self.company_id} when selecting incoming and outgoing documents.
             Name the key of your chosen JSON schema like this ```schema_name SCHEMA_KEY_NAME```.
             Provide your filled JSON like this: ```json FILLED_JSON```
             Provide your answer in the described format !!!"""
@@ -418,6 +426,8 @@ class RAGService:
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk        
 
+        doc_type = None # prevents UnboundLocalError !
+        json_schema = None # prevents UnboundLocalError !
         parsed_json = None # prevents UnboundLocalError !
         try:
             doc_type = re.search(r"```schema_name\s*(.*?)\s*```", answer, re.DOTALL)
