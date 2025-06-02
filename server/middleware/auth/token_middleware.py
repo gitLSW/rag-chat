@@ -61,9 +61,9 @@ class TokenMiddleware(BaseHTTPMiddleware):
         if not company_id or not user_id:
             raise HTTPException(400, "Missing companyId or userId in token payload.")
 
-        if user_id == 'admin':
+        if user_id == 'superuser':
             # The super admin was used. Without a super admin, it wouldn't be possible to register any users (including other admins)
-            user_data = { 'id': 'admin', 'accessRoles': ['admin'] }
+            user_data = { 'id': 'superuser', 'accessRoles': ['admin'] }
         else:
             user_data = db_client[company_id]['users'].find_one({ '_id': user_id })
             if not user_data:

@@ -128,19 +128,27 @@ async def delete_user(user_id, req: Request):
     return rag_service.access_manager.delete_user(user_id, req.state.user)
 
 
+
 @app.post('/documentSchemata')
 async def add_doc_schema(req: Request):
     body = await req.json()
     validate(body, ADD_DOC_SCHEMA_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return await rag_service.add_json_schema_type(body['docType'], body['docSchema'], req.state.user)
+    return await rag_service.add_doc_schema(body['docType'], body['docSchema'], req.state.user)
+
+
+@app.get('/documentSchemata') 
+async def get_doc_schemata(req: Request):
+    rag_service = get_company_rag_service(req.state.user.company_id)
+    return await rag_service.get_doc_schemata()
 
 
 @app.delete('/documentSchemata/{doc_type}')
 async def delete_doc_schema(doc_type, req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return await rag_service.delete_json_schema_type(doc_type, req.state.user)
+    return await rag_service.delete_doc_schema(doc_type, req.state.user)
+
 
 
 @app.post('/documents')

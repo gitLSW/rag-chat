@@ -82,7 +82,7 @@ class RAGService:
         self.docs_db = client[company_id]['docs']
 
 
-    async def add_json_schema_type(self, doc_type, json_schema, user):
+    async def add_doc_schema(self, doc_type, json_schema, user):
         user.assert_admin()
         
         if doc_type in self.doc_schemata.keys():
@@ -108,7 +108,11 @@ class RAGService:
         return OKResponse(f"Successfully added new JSON schema for {doc_type}", json_schema)
 
 
-    async def delete_json_schema_type(self, doc_type, user):
+    def get_doc_schemata(self):
+        return OKResponse(f"Successfully retrieved JSON schemas", self.doc_schemata)
+
+
+    async def delete_doc_schema(self, doc_type, user):
         user.assert_admin()
         
         if self.docs_db.find_one({ 'doc_type': doc_type }):

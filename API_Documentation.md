@@ -12,6 +12,7 @@ The Bearer Token must be generated with `jsonwebtoken` and its payload must enco
   "userId": USER_IDENTIFIER
 }
 ```
+A superuser access is provided by the system when the token's user_id is "superuser".
 The public key will be retreived automatically from the Auth server's URL, which needs to be specified in the .env file.
 
 
@@ -23,8 +24,8 @@ Access groups for each company must be used by at least one user previous to usi
 Every document has a list of accessGroups associated with it.
 Administrator roles are always added automatically by the system.
 They are named `admin` in the System.
-A "super admin" access is provided by the system when the token's user_id is "admin".
-This "super admin" can be used to create the first admin user for a new company.
+A superuser access is provided by the system when the token's user_id is "superuser".
+This superuser can be used to create the first admin user for a new company.
 
 #### `POST /users`
 - **Purpose**: Creates or overwrites a user with access groups for document permissions.
@@ -81,6 +82,20 @@ If too many schemata are registered (= too much text for the LLM), no new ones w
 }
 ```
 - **Response Schema**: Success/Failure Response with the added schema
+
+#### `GET /documentSchemata`
+- **Purpose**: Retrieves all document types and their corresponding JSON schema.
+- **Request Schema**: `None`
+- **Response Schema**: Success/Failure response with a JSON dictionary containg the document types as keys and their JSON schema as values.
+```json
+{
+    DOC_TYPE_1: {
+      "type": "object",
+      "description": "A valid JSON Schema that will validate document metadata of this type",
+      "additionalProperties": true
+    }
+}
+```
 
 #### `DELETE /documentSchemata/{doc_type}`
 - **Purpose**: Deletes an existing document schema, if it is unused by all documents.
@@ -146,7 +161,7 @@ Finally, the document's text content gets saved as a txt file.
   }
 }
 ```
-- **Response Schema**: Success/Failure response with whe added document's metadata
+- **Response Schema**: Success/Failure response with the added document's metadata
 ```json
 {
   "type": "object",
@@ -217,7 +232,7 @@ Finally, the document's text content gets saved as a txt file.
 #### `GET /documents/{doc_id}`
 - **Purpose**: Retrieves a document's metadata and text content.
 - **Request Schema**: `None`
-- **Response Schema**: Success/Failure response with whe retrieved document's metadata
+- **Response Schema**: Success/Failure response with the retrieved document's metadata
 ```json
 {
   "type": "object",
