@@ -16,7 +16,7 @@ class APIAccessMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip verification for exempt paths
-        if request.url.path in self.exempt_paths:
+        if any(request.url.path.startswith(exempt_path) for exempt_path in self.exempt_paths):
             return await call_next(request)
 
         # Verify IP address
