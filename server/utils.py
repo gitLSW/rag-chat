@@ -106,6 +106,10 @@ async def safe_async_read(filepath):
                 return await f.read()
 
 async def safe_async_write(filepath, content):
+    # Create the directory in case it doesn't exist yet
+    directory = os.path.dirname(filepath)
+    os.makedirs(directory, exist_ok=True)
+            
     async with file_lock.writer:
         async with aiofiles.open(filepath, mode='w') as f:
                 await f.write(content)
