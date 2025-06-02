@@ -76,7 +76,7 @@
       "currency"
     ]
   },
-  "delivery note": {
+  "deliveryNote": {
     "type": "object",
     "properties": {
       "deliveryNoteNumber": {
@@ -143,7 +143,7 @@
       "itemsDelivered"
     ]
   },
-  "purchase order": {
+  "purchaseOrder": {
     "type": "object",
     "properties": {
       "poNumber": {
@@ -261,7 +261,7 @@
       "currency"
     ]
   },
-  "credit note": {
+  "creditNote": {
     "type": "object",
     "properties": {
       "creditNoteNumber": {
@@ -354,7 +354,7 @@
       { "required": ["employeeID"] }
     ]
   },
-  "payment confirmation": {
+  "paymentConfirmation": {
     "type": "object",
     "properties": {
       "paymentID": {

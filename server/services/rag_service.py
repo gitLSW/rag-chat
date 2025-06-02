@@ -17,7 +17,7 @@ from services.access_manager import get_access_manager
 from vllm import SamplingParams
 from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
-from services.doc_path_classifier import DocPathClassifier
+from services.doc_type_classifier import DocTypeClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,6 @@ BASE_DOC_SCHEMA = {
     'type': 'object',
     'properties': {
         'id': {'type': 'string'},
-        'path': {'type': 'string'},
         'docType': {'type': ['string', 'null']},
         'accessGroups': {
             'type': ['array', 'null'],
@@ -38,7 +37,7 @@ BASE_DOC_SCHEMA = {
             'minItems': 1
         }
     },
-    'required': ['id', 'path', 'docType', 'accessGroups']
+    'required': ['id', 'docType', 'accessGroups']
 }
 
 
@@ -66,11 +65,10 @@ class RAGService:
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         
         try:
-            self.doc_path_classifier = DocPathClassifier(company_id)
+            self.doc_type_classifier = DocTypeClassifier(company_id)
         except FileNotFoundError:
-            self.doc_path_classifier = None
+            self.doc_type_classifier = None
 
-        self.schemata_embeddings = None
         self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
         if os.path.exists(self.schemata_path):
             schemata_path = self.schemata_path
@@ -106,9 +104,6 @@ class RAGService:
         
         await safe_async_write(self.schemata_path, doc_schemata_str)
         
-        if self.schemata_embeddings:
-            self._update_schemata_embeddings()
-        
         return OKResponse(f"Successfully added new JSON schema for {doc_type}", json_schema)
 
 
@@ -128,9 +123,6 @@ class RAGService:
         
         del self.doc_schemata[doc_type]
         await safe_async_write(self.schemata_path, json.dumps(self.doc_schemata))
-        
-        if self.schemata_embeddings:
-            self._update_schemata_embeddings()
         
         logger.info(f"User '{user.id}' at '{user.company_id}' deleted doc schema '{doc_type}'")
         
@@ -159,12 +151,6 @@ class RAGService:
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path, force_ocr)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
         
-        # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
-        if self.doc_path_classifier and not doc_data.get('path'):
-            # Classify Document into a path if non existant
-            file_name = os.path.basename(source_path)
-            doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
-
         # Extract JSON
         extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
 
@@ -317,7 +303,7 @@ class RAGService:
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
 
-    async def extract_json(self, doc_text, doc_type=None):
+    async def extract_json(self, doc_text, doc_type=None, sampling_params=None):
         """
         Extracts a filled JSON object from LLM output based on a schema and checks if all fields are filled.
 
@@ -332,20 +318,23 @@ class RAGService:
                 - dict: The JSON schema used to validate it
                 - bool: Whether all schema fields were filled.
         """
-        if doc_type:
-            json_schema = self.doc_schemata.get(doc_type)
-        else:
-            json_schema, doc_type = self._identify_doc_type(doc_text)
+        if not sampling_params:
+            sampling_params = SamplingParams(
+                temperature=0.1,
+                top_p=0.4,
+                max_tokens=2048
+                # stop=["\n\n", "\n", "Q:", "###"]
+            )
 
+        if not doc_type:
+            if self.doc_type_classifier:
+                doc_type = self.doc_type_classifier.classify_doc(doc_text)
+            else:
+                return await self.identify_and_extract_json(doc_text, sampling_params)
+
+        json_schema = self.doc_schemata.get(doc_type)
         if not json_schema:
             return None, doc_type, None, False
-
-        sampling_params = SamplingParams(
-            temperature=0.1,
-            top_p=0.4,
-            max_tokens=2048
-            # stop=["\n\n", "\n", "Q:", "###"]
-        )
 
         prompt = f"""This is a JSON Schema which you need to fill:
 
@@ -371,7 +360,7 @@ class RAGService:
             - In your answer follow the JSON Format strictly !
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
-            Provide your answer in the described format !!!"""
+            Provide your final answer like this: ```json FILLED_JSON```"""
         
         answer = ""
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
@@ -396,37 +385,66 @@ class RAGService:
             return None, doc_type, json_schema, False
     
 
-    def _identify_doc_type(self, doc_text):
-        from collections import defaultdict
+    async def identify_and_extract_json(self, doc_text, sampling_params):
+        prompt = f"""These are the available JSON Schemata:
 
-        # Precompute schema embeddings
-        if not self.schemata_embeddings:
-            self._update_schemata_embeddings()
+            {json.dumps(self.doc_schemata)}
 
-        vote_counts = defaultdict(int)
-        valid_vote_count = 0
+            ### TASK REQUIREMENT
+            You are a json extractor. You are tasked with identifying the appropriate JSON for the text below and extracting the relevant information needed to fill your chosen JSON schema.
+            
+            {doc_text}
+
+            ### STRICT RULES FOR GENERATING OUTPUT:
+            **ALWAYS PROVIDE YOUR FINAL ANSWER**:
+            - Always provide the filled JSON for your chosen Schema
+            **JSON Schema Mapping:**:
+            - Carefully check to find ALL relevant information in the text like ids, names, addresses, etc.
+            - Sometimes ids my be called numbers
+            - Strictly map the data you found to your chosen JSON Schema without modification or omissions.
+            **Hierarchy Preservation:**:
+            - Maintain proper parent-child relationships and follow the schema's hierarchical structure.
+            **Correct Mapping of Attributes:**:
+            - Map all the relevant information you find to its appropriate keys
+            **JSON Format Compliance:**:
+            - In your answer follow the JSON Format strictly !
+            - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
+            
+            Name the key of your chosen JSON schema like this ```schema_name SCHEMA_KEY_NAME```.
+            Provide your filled JSON like this: ```json FILLED_JSON```
+            Provide your answer in the described format !!!"""
         
-        doc_embedding = RAGService.embedding_model.encode(doc_text)
+        answer = ""
+        async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
+            answer += chunk        
 
-        # Compare the alignment of the document's embedding vector to every schema's embedding vector via the cosine similarity check
-        similarity_scores = {
-            doc_type: util.pytorch_cos_sim(
-                torch.tensor(doc_embedding).unsqueeze(0),
-                torch.tensor(schema_embedding).unsqueeze(0)
-            ).item()
-            for doc_type, schema_embedding in self.schemata_embeddings.items()
-        }
-
-        # Find best match
-        best_type, best_score = max(similarity_scores.items(), key=lambda x: x[1])
-
-        print(f"Text: {doc_text[:200]}... → Best Match: {best_type} ({best_score:.4f})")
-        
-        # Only assign a type if it scored above a certain threshhold
-        if best_score < 0.2:
-            return None, None
-
-        return self.doc_schemata[best_type], best_type
+        parsed_json = None # prevents UnboundLocalError !
+        try:
+            doc_type = re.search(r"```schema_name\s*(.*?)\s*```", answer, re.DOTALL)
+            if doc_type:
+                doc_type = doc_type.group(1)
+            else:
+                raise ValueError("No doc_type found in LLM response")
+            
+            json_schema = self.doc_schemata.get(doc_type)
+            if not json_schema:
+                raise ValueError("Unknown doc_type found in LLM response")
+            
+            answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
+            if answer_json:
+                answer_json = answer_json.group(1)
+            else:
+                raise ValueError("No JSON found in LLM response")
+            
+            parsed_json = json.loads(answer_json)
+            jsonschema.validate(parsed_json, json_schema)
+            return parsed_json, doc_type, json_schema, True
+        except jsonschema.exceptions.ValidationError as e:
+            print('JSON Schema Validation error:', e)
+            return parsed_json, doc_type, json_schema, False
+        except (ValueError, IndexError, json.JSONDecodeError) as e:
+            # print(f"Failed to extract or parse JSON from model response: {e}")
+            return None, doc_type, json_schema, False
 
     
     def _merge_with_base_schema(self, json_schema):
@@ -434,13 +452,6 @@ class RAGService:
             'type': 'object',
             'properties': {**json_schema.get('properties', {}), **BASE_DOC_SCHEMA['properties']},
             'required': list(set(BASE_DOC_SCHEMA['required'] + json_schema.get('required', [])))
-        }
-    
-    
-    def _update_schemata_embeddings(self):
-        self.schemata_embeddings = {
-            doc_type: RAGService.embedding_model.encode(json.dumps(schema))
-            for doc_type, schema in self.doc_schemata.items()
         }
 
 
