@@ -19,7 +19,7 @@ class User:
         self.access_roles = user_data.get('accessRoles')
         self.company_id = company_id
         
-        if not self.id or not self.access_roles or company_id:
+        if not self.id or not self.access_roles or not company_id:
             raise HTTPException(400, "User must contain an 'id', 'accessRoles' and 'companyId'")
 
 
