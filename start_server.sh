@@ -50,4 +50,4 @@ echo "  sudo systemctl restart ${FASTAPI_SERVICE_NAME}"
 
 
 # Streams the server output
-sudo journalctl -u rag-fastapi-server -f
+sudo journalctl -u rag-server -f
