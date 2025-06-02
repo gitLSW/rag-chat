@@ -53,6 +53,11 @@ sudo ufw allow 7500/tcp
 sudo ufw reload
 ```
 
+### Create the system service file:
+```bash
+bash create_system_service.sh
+```
+
 ### Start the server:
 ```bash
 bash start_server.sh

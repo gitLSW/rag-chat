@@ -6,7 +6,7 @@
 
 # --- Configuration ---
 # Name of your FastAPI server systemd service
-FASTAPI_SERVICE_NAME="rag-fastapi-server"
+FASTAPI_SERVICE_NAME="rag-server"
 # Name of the MongoDB systemd service (standard name)
 MONGO_SERVICE_NAME="mongod"
 

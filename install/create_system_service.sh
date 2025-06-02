@@ -11,7 +11,7 @@
 
 # --- Configuration ---
 # Name of your systemd service
-SERVICE_NAME="rag-fastapi-server"
+SERVICE_NAME="rag-server"
 # Full path where the service file will be created
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -111,12 +111,6 @@ echo "Systemd service file created successfully."
 echo "--- Reloading systemd daemon to recognize the new service ---"
 sudo systemctl daemon-reload
 
-echo "--- Enabling ${SERVICE_NAME} to start automatically on boot ---"
-sudo systemctl enable "${SERVICE_NAME}"
-
-echo "--- Starting ${SERVICE_NAME} service now ---"
-sudo systemctl start "${SERVICE_NAME}"
-
 echo "--- Service Setup Complete ---"
 echo ""
 echo "Your RAG FastAPI server should now be running as a systemd service."
@@ -129,6 +123,9 @@ echo ""
 echo "To view logs (most recent first):"
 echo "  journalctl -u ${SERVICE_NAME} --since '5 minutes ago' -f"
 echo "  (Use '-f' to follow logs in real-time)"
+echo ""
+echo "To start the service:"
+echo "  sudo systemctl start ${SERVICE_NAME}"
 echo ""
 echo "To stop the service:"
 echo "  sudo systemctl stop ${SERVICE_NAME}"
