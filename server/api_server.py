@@ -200,7 +200,7 @@ async def update_doc(doc_id: str, req: Request):
     body = await req.json()
 
     doc_data = body.get('docData')
-    if doc_data is dict:
+    if isinstance(doc_data, dict):
         body_doc_id = doc_data.get('id')
         if not body_doc_id:
             body['docData']['id'] = doc_id
