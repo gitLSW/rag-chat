@@ -101,16 +101,17 @@ app = FastAPI()
 
 
 # Add the HTTP middleware
-# register_exception_handlers(app)
+register_exception_handlers(app)
 app.add_middleware(TokenMiddleware, public_key_url=PUBLIC_KEY_URL)
 app.add_middleware(
     APIAccessMiddleware,
     api_key=API_KEY,
     allowed_ips=API_ALLOWED_IPs,
-    exempt_paths={'/chat'}
+    exempt_paths={'/documentSchemata', '/search', '/chat'}
 )
 
 app.include_router(chat_ws_router) # Add /chat endpoint
+
 
 
 @app.post('/users')
@@ -225,6 +226,7 @@ async def delete_doc(doc_id, req: Request):
     return rag_service.delete_doc(doc_id, req.state.user)
 
 
+
 # TODO: Gather docs for download (if not downlaoding from honesty system
 @app.get('/search')
 async def search_docs(req: Request,
@@ -232,6 +234,7 @@ async def search_docs(req: Request,
                       searchDepth: int = Query(10, ge=1, description="Search depth, default 10")):
     rag_service = get_company_rag_service(req.state.user.company_id)
     return rag_service.find_docs(question, searchDepth, req.state.user)
+
 
 
 # main.py
