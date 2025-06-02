@@ -88,11 +88,6 @@ def register_exception_handlers(app):
         logger.warning(f"TypeError: {exc}")
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": get_exc_message(exc, "Invalid input type")})
     
-    @app.exception_handler(aiofiles.os.error)
-    async def aiofiles_os_error_handler(request: Request, exc: aiofiles.os.error):
-        logger.error(f"aiofiles OS Error: {exc}")
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": get_exc_message(exc, "Filesystem operation failed")})
-    
     @app.exception_handler(IsADirectoryError)
     async def is_a_directory_error_handler(request: Request, exc: IsADirectoryError):
         logger.warning(f"IsADirectoryError: {exc}")
