@@ -12,9 +12,11 @@ db_client = MongoClient(MONGO_DB_URL)
 
 class User:
     def __init__(self, user_data, company_id):
-        self.id = user_data['id']
-        self.access_roles = user_data['accessRoles']
+        self.id = user_data.get('id')
+        self.access_roles = user_data.get('accessRoles')
         self.company_id = company_id
+        if not self.id or not self.access_roles:
+            raise HTTPException(400, "User must contain an 'id' and 'accessRoles'")
 
 
     def assert_admin(self):
@@ -68,7 +70,7 @@ class AccessManager:
         """
         curr_user.assert_admin() # Require admin rights
 
-        user = User(user_data, self.company_id)
+        user = User(user_data, self.company_id) # validates userData
         
         view_name = f'access_view_{user.id}'
 
@@ -109,13 +111,8 @@ class AccessManager:
             else:
                 raise e
 
-        # The 'users' collection is not currently needed, but may be useful in later versions of the server
-        # Overwrite user
-        self.company_db['users'].replace_one(
-            {'id': user.id},
-            user_data,
-            upsert=True
-        )
+        # Create or overwrite user
+        self.company_db['users'].replace_one({ '_id': user.id }, user_data, upsert=True)
         
         self.valid_access_groups.update(user.access_roles) # Update all unique entries
 
