@@ -142,7 +142,7 @@ async def add_doc_schema(req: Request):
 @app.get('/documentSchemata') 
 async def get_doc_schemata(req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return await rag_service.get_doc_schemata()
+    return rag_service.get_doc_schemata()
 
 
 @app.delete('/documentSchemata/{doc_type}')
