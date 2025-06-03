@@ -433,7 +433,8 @@ class RAGService:
                 "schema name": 'YOUR CHOSEN SCHEMA NAME',
                 "filled json": 'YOUR CHOSEN FILLED JSON',
             })}```
-            If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!"""
+            If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!
+            Start your thought process here:"""
         
         answer = ""
         answer_json = None
@@ -446,6 +447,9 @@ class RAGService:
                     answer_json = answer_json.group(1)
                     if await RAGService.llm_service.abort(req_id):
                         break
+
+        print("LLM QUERY:", prompt)
+        print("LLM ANSWER:", answer)
 
         doc_type = None # prevents UnboundLocalError !
         json_schema = None # prevents UnboundLocalError !
