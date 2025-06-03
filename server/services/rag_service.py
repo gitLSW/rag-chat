@@ -371,15 +371,20 @@ class RAGService:
             If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!"""
         
         answer = ""
-        async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
-            answer += chunk
+        answer_json = None
+        req_id = str(uuid.uuid4())
+        async for chunk in RAGService.llm_service.query(prompt, req_id=req_id, sampling_params=sampling_params, allow_chunking=False):
+            answer += chunk     
+            if '`' in chunk:
+                answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
+                if answer_json:
+                    answer_json = answer_json.group(1)
+                    if await RAGService.llm_service.abort(req_id):
+                        break
 
         parsed_json = None # prevents UnboundLocalError !
         try:
-            answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
-            if answer_json:
-                answer_json = answer_json.group(1)
-            else:
+            if not answer_json:
                 raise ValueError("No JSON found in LLM response")
             
             parsed_json = json.loads(answer_json)
