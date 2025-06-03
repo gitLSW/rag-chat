@@ -431,9 +431,9 @@ class RAGService:
         async for chunk in RAGService.llm_service.query(prompt, req_id=req_id, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk     
             if '`' in chunk:
-                match = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
-                if match:
-                    answer_json = match.group(1)
+                answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
+                if answer_json:
+                    answer_json = answer_json.group(1)
                     if await RAGService.llm_service.abort(req_id):
                         break
 
@@ -446,10 +446,10 @@ class RAGService:
         json_schema = None # prevents UnboundLocalError !
         parsed_json = None # prevents UnboundLocalError !
         try:
-            answer_json = json.loads(answer_json)
             if answer_json:
+                answer_json = json.loads(answer_json)
                 doc_type = answer_json.get('schema name')
-                answer_json = answer_json.get('filled json')
+                parsed_json = answer_json.get('filled json')
             else:
                 raise ValueError("No JSON found in LLM response")
             
@@ -460,7 +460,6 @@ class RAGService:
             if not json_schema:
                 raise ValueError("Unknown doc_type found in LLM response")
             
-            parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
             return parsed_json, doc_type, json_schema, True
         except jsonschema.exceptions.ValidationError as e:
