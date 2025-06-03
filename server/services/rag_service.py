@@ -367,7 +367,8 @@ class RAGService:
             - In your answer follow the JSON Format strictly !
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
-            Provide your final answer like this: ```json FILLED_JSON```"""
+            Provide your final answer like this: ```json FILLED_JSON```
+            If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!"""
         
         answer = ""
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
