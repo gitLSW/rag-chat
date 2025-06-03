@@ -1,7 +1,7 @@
 import os
 import re
 import json
-import torch
+import uuid
 import logging
 from utils import get_env_var, get_company_path, data_path, safe_async_read, safe_async_write
 
@@ -425,26 +425,25 @@ class RAGService:
             })}```"""
         
         answer = ""
-        async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
+        answer_json = None
+        req_id = str(uuid.uuid4())
+        async for chunk in RAGService.llm_service.query(prompt, req_id=req_id, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk     
+            if '`' in chunk:
+                match = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
+                if match:
+                    answer_json = match.group(1)
+                    RAGService.llm_service.abort(req_id)
         
         print("LLM QUERY:", prompt)
         print("LLM ANSWER:", answer)
+        print("LLM ANSWER JSON:", json.dumps(answer_json))
         
         doc_type = None # prevents UnboundLocalError !
         json_schema = None # prevents UnboundLocalError !
         parsed_json = None # prevents UnboundLocalError !
         try:
-            doc_type = re.search(r"```schema_name\s*(.*?)\s*```", answer, re.DOTALL)
-            if doc_type:
-                doc_type = doc_type.group(1)
-            else:
-                raise ValueError("No doc_type found in LLM response")
-            
-            
-            answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
             if answer_json:
-                answer_json = answer_json.group(1)
                 doc_type = answer_json.get('schema name')
                 answer_json = answer_json.get('filled json')
             else:
