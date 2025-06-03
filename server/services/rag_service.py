@@ -369,7 +369,7 @@ class RAGService:
             
             Provide your final answer like this: ```json FILLED_JSON```
             If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!
-            Start your thought process here:"""
+            Start your answer or thought process here:"""
         
         answer = ""
         answer_json = None
@@ -434,7 +434,7 @@ class RAGService:
                 "filled json": 'YOUR CHOSEN FILLED JSON',
             })}```
             If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!
-            Start your thought process here:"""
+            Start your answer or thought process here:"""
         
         answer = ""
         answer_json = None
