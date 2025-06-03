@@ -368,7 +368,8 @@ class RAGService:
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
             Provide your final answer like this: ```json FILLED_JSON```
-            If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!"""
+            If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!
+            Start your thought process here:"""
         
         answer = ""
         answer_json = None
