@@ -303,10 +303,15 @@ class LLMChat:
         """Generate the source references string."""
         sources_info = "Consult these documents for more detail:\n"
         for doc_id, pages in doc_sources_map.items():
+            doc_pseudo_path = None # prevents UnboundLocalError !
             try:
                 doc = self.rag_service.docs_db.find_one({ '_id': doc_id })
-                doc_pseudo_path = doc.get('path')
+                if doc:
+                    doc_pseudo_path = doc.get('path')
             except Exception:
+                pass
+
+            if not doc_pseudo_path:
                 doc_pseudo_path = f"Document with ID {doc_id}"
                 
             sources_info += doc_pseudo_path

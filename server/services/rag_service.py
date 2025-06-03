@@ -17,7 +17,7 @@ from services.access_manager import get_access_manager
 from vllm import SamplingParams
 from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
-# from services.doc_type_classifier import DocTypeClassifier
+from services.doc_path_classifier import DocPathClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +65,10 @@ class RAGService:
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         
         # TODO: Add a classifer trained on the docTypes
-        # try:
-        #     self.doc_type_classifier = DocTypeClassifier(company_id)
-        # except FileNotFoundError:
-        #     self.doc_type_classifier = None
+        try:
+            self.doc_path_classifier = DocPathClassifier(company_id)
+        except FileNotFoundError:
+            self.doc_path_classifier = None
 
         self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
         if os.path.exists(self.schemata_path):
@@ -152,6 +152,12 @@ class RAGService:
         paragraphs = RAGService.doc_extractor.extract_paragraphs(source_path, force_ocr)
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
     
+        # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
+        if not doc_data.get('path'):
+            # Classify Document into a path if non existant
+            file_name = os.path.basename(source_path)
+            doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
+            
         # Retrain the classifier based on the exsting data, every time a human selects a doc type manually
         # if doc_type and 500 < self.docs_db.countDocuments({}):
         #     txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
@@ -383,9 +389,6 @@ class RAGService:
                     if await RAGService.llm_service.abort(req_id):
                         break
 
-        print("LLM QUERY:", prompt)
-        print("LLM ANSWER:", answer)
-
         parsed_json = None # prevents UnboundLocalError !
         try:
             if not answer_json:
@@ -447,9 +450,6 @@ class RAGService:
                     answer_json = answer_json.group(1)
                     if await RAGService.llm_service.abort(req_id):
                         break
-
-        print("LLM QUERY:", prompt)
-        print("LLM ANSWER:", answer)
 
         doc_type = None # prevents UnboundLocalError !
         json_schema = None # prevents UnboundLocalError !
