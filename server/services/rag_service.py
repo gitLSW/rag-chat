@@ -433,7 +433,9 @@ class RAGService:
                 match = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
                 if match:
                     answer_json = match.group(1)
-                    RAGService.llm_service.abort(req_id)
+                    if await RAGService.llm_service.abort(req_id):
+                        break
+
         
         print("LLM QUERY:", prompt)
         print("LLM ANSWER:", answer)
