@@ -419,10 +419,11 @@ class RAGService:
             
             Only chose one schema.
             Keep in mind you are working for {self.company_id} when selecting incoming and outgoing documents.
-            Provide your answer like this: ```json {json.dumps({
+            Provide your FINAL answer like this: ```json {json.dumps({
                 "schema name": 'YOUR CHOSEN SCHEMA NAME',
                 "filled json": 'YOUR CHOSEN FILLED JSON',
-            })}```"""
+            })}```
+            If you want to make notes, do so without the markdown tags. Provide only your final answer with the markdown tags !!"""
         
         answer = ""
         answer_json = None
