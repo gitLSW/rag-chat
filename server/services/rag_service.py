@@ -153,7 +153,7 @@ class RAGService:
         doc_text = '\n\n'.join(paragraph for _, paragraph in paragraphs)
     
         # Classify the pseudo path (it is only used as a tool for users to organise themselves and has nothing to do with the file location)
-        if not doc_data.get('path'):
+        if self.doc_path_classifier and not doc_data.get('path'):
             # Classify Document into a path if non existant
             file_name = os.path.basename(source_path)
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
