@@ -445,6 +445,7 @@ class RAGService:
         json_schema = None # prevents UnboundLocalError !
         parsed_json = None # prevents UnboundLocalError !
         try:
+            answer_json = json.loads(answer_json)
             if answer_json:
                 doc_type = answer_json.get('schema name')
                 answer_json = answer_json.get('filled json')
