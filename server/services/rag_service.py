@@ -443,11 +443,6 @@ class RAGService:
                     if await RAGService.llm_service.abort(req_id):
                         break
 
-        
-        print("LLM QUERY:", prompt)
-        print("LLM ANSWER:", answer)
-        print("LLM ANSWER JSON:", json.dumps(answer_json))
-        
         doc_type = None # prevents UnboundLocalError !
         json_schema = None # prevents UnboundLocalError !
         parsed_json = None # prevents UnboundLocalError !
