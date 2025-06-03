@@ -217,8 +217,8 @@ class RAGService:
         if not doc_type and not old_doc_type:
             raise HTTPException(400, "No docType defined.")
 
-        if doc_type != old_doc_type:
-            merge_existing = False
+        if doc_type != old_doc_type and merge_existing and not doc_type: # Allow None doc_types
+            raise HTTPException(400, f"Cannot merge docs of differing type. Disable 'mergeExisting' or leave 'docType' as '{old_doc_type}'.")
         
         doc_schema = self.doc_schemata.get(doc_type)
         if not doc_schema:
