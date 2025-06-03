@@ -398,7 +398,7 @@ class RAGService:
             {json.dumps(self.doc_schemata)}
 
             ### TASK REQUIREMENT
-            You are a json extractor. You are tasked with identifying the appropriate JSON for the text below and extracting the relevant information needed to fill your chosen JSON schema.
+            You are a json extractor. You are tasked with identifying the single most appropriate JSON for the text below and extracting the relevant information needed to fill your chosen JSON schema.
             
             {doc_text}
 
@@ -417,6 +417,7 @@ class RAGService:
             - In your answer follow the JSON Format strictly !
             - If your answer doesn't conform to the JSON Format or is incompatible with the provided JSON schema, the output will be disgarded !
             
+            Only chose one schema.
             Keep in mind you are working for {self.company_id} when selecting incoming and outgoing documents.
             Name the key of your chosen JSON schema like this ```schema_name SCHEMA_KEY_NAME```.
             Provide your filled JSON like this: ```json FILLED_JSON```
