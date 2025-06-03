@@ -419,15 +419,17 @@ class RAGService:
             
             Only chose one schema.
             Keep in mind you are working for {self.company_id} when selecting incoming and outgoing documents.
-            Name the key of your chosen JSON schema like this ```schema_name SCHEMA_KEY_NAME```.
-            Provide your filled JSON like this: ```json FILLED_JSON```
-            Provide your answer in the described format !!!"""
+            Provide your answer like this: ```json {json.dumps({
+                "schema name": 'YOUR CHOSEN SCHEMA NAME',
+                "filled json": 'YOUR CHOSEN FILLED JSON',
+            })}```"""
         
         answer = ""
         async for chunk in RAGService.llm_service.query(prompt, sampling_params=sampling_params, allow_chunking=False):
             answer += chunk     
         
-        print(answer)
+        print("LLM QUERY:", prompt)
+        print("LLM ANSWER:", answer)
         
         doc_type = None # prevents UnboundLocalError !
         json_schema = None # prevents UnboundLocalError !
@@ -439,15 +441,21 @@ class RAGService:
             else:
                 raise ValueError("No doc_type found in LLM response")
             
-            json_schema = self.doc_schemata.get(doc_type)
-            if not json_schema:
-                raise ValueError("Unknown doc_type found in LLM response")
             
             answer_json = re.search(r"```json\s*(.*?)\s*```", answer, re.DOTALL)
             if answer_json:
                 answer_json = answer_json.group(1)
+                doc_type = answer_json.get('schema name')
+                answer_json = answer_json.get('filled json')
             else:
                 raise ValueError("No JSON found in LLM response")
+            
+            if not doc_type:
+                raise ValueError("No doc_type found in LLM response")
+
+            json_schema = self.doc_schemata.get(doc_type)
+            if not json_schema:
+                raise ValueError("Unknown doc_type found in LLM response")
             
             parsed_json = json.loads(answer_json)
             jsonschema.validate(parsed_json, json_schema)
