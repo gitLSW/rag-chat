@@ -382,6 +382,9 @@ class RAGService:
                     if await RAGService.llm_service.abort(req_id):
                         break
 
+        print("LLM QUERY:", prompt)
+        print("LLM ANSWER:", answer)
+
         parsed_json = None # prevents UnboundLocalError !
         try:
             if not answer_json:
