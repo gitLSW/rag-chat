@@ -20,7 +20,7 @@ class User:
         self.company_id = company_id
         
         if not self.id or not self.access_roles or not company_id:
-            raise HTTPException(400, "User must contain an 'id', 'accessRoles' and 'companyId'")
+            raise HTTPException(400, "User must contain an 'id' and 'accessRoles'")
 
 
     def assert_admin(self):
