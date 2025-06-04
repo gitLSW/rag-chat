@@ -473,7 +473,6 @@ class RAGService:
                     if await RAGService.llm_service.abort(req_id):
                         break
 
-        print('DOC TYPE:', doc_type)
         print('DOC TEXT:', doc_text)
         print('LLM ANSWER:', answer)
 

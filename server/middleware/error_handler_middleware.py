@@ -78,7 +78,7 @@ def register_exception_handlers(app):
         logger.warning(f"JSONSchema ValidationError: {exc}")
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={
                 'detail': get_exc_message(exc, "Data validation failed"),
-                'invalid_json': exc.instance,
+                'invalidJSON': exc.instance,
             })
 
     @app.exception_handler(ValueError)
