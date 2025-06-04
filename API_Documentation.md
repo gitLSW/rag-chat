@@ -195,7 +195,12 @@ Finally, the document's text content gets saved as a txt file.
   "properties": {
     "mergeExisting": {
       "type": "boolean",
-      "description": "Whether to merge with existing data. Fields will still overwrite fields of the same name on the old documents. Arrays of same named fields will not be merged.",
+      "description": "Whether to merge with existing data. Fields will still overwrite fields of the same name on the old documents. Arrays of same named fields will not be merged. Merging is not allowed if the docType changes.",
+      "default": false
+    },
+    "extractJSON": {
+      "type": "boolean",
+      "description": "The LLM extracts the docData from the document text. The docType must change and mergeExisting must be disabled",
       "default": false
     },
     "docData": {

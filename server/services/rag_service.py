@@ -137,9 +137,11 @@ class RAGService:
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f"Doc {doc_id} already exists and override was disallowed !")
         
-        doc_type = doc_data.get('docType')
-        if doc_type and not doc_type in self.doc_schemata.keys():
-            raise HTTPException(409, f"No doc schema found for doc type '{doc_type}'. Add the schema first with POST /documentSchemata")
+        chosen_doc_type = doc_data.get('docType')
+        if chosen_doc_type:
+            chosen_doc_schema = self.doc_schemata.get(chosen_doc_type)
+            if not chosen_doc_schema:
+                raise HTTPException(409, f"No doc schema found for doc type '{chosen_doc_type}'. Add the schema first with POST /documentSchemata")
         
         # Validate user access
         try:
@@ -159,13 +161,13 @@ class RAGService:
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
             
         # Retrain the classifier based on the exsting data, every time a human selects a doc type manually
-        # if doc_type and 500 < self.docs_db.countDocuments({}):
+        # if chosen_doc_type and 500 < self.docs_db.countDocuments({}):
         #     txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
         #     text = await safe_async_read(txt_path)
         #     self.doc_type_classifier.train(texts, doc_types) # TODO: Add train function
 
         # Extract JSON
-        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, doc_type)
+        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, chosen_doc_type)
 
         if is_extract_valid:
             # Build final schema
@@ -174,8 +176,8 @@ class RAGService:
             doc_data = { **extracted_doc_data, **doc_data }
             doc_data['docType'] = doc_type
         else:
-            doc_schema = BASE_DOC_SCHEMA
-            doc_data['docType'] = None
+            doc_data['docType'] = chosen_doc_type
+            doc_schema = self._merge_with_base_schema(chosen_doc_schema)
 
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
@@ -206,40 +208,56 @@ class RAGService:
         return OKResponse(f"Successfully processed Document {doc_id}", doc_data)
 
 
-    def update_doc_data(self, doc_data, merge_existing, user):
+    async def update_doc_data(self, doc_data, merge_existing, extract_json, user):
         doc_id = doc_data['id']
         old_doc = user.has_doc_access(doc_id)
-        
-        old_doc_type = old_doc.get('docType')
-        merged_doc = { **old_doc, **doc_data }
-        
-        doc_type = merged_doc.get('docType')
-        if not doc_type and not old_doc_type:
-            raise HTTPException(400, "No docType defined.")
 
-        if doc_type != old_doc_type and merge_existing and not doc_type: # Allow None doc_types
-            raise HTTPException(400, f"Cannot merge docs of differing type. Disable 'mergeExisting' or leave 'docType' as '{old_doc_type}'.")
+        if merge_existing and extract_json:
+            raise HTTPException(400, "Merging requires unchanged docTypes and extracting JSON requires changing docTypes. Only one can be done at once.")
+
+        doc_type = doc_data.get('docType')
+        old_doc_type = old_doc.get('docType')
         
-        doc_schema = self.doc_schemata.get(doc_type)
-        if not doc_schema:
-            raise HTTPException(422, "Unknown doc_type. Register the JSON schema with POST /documentSchemata first.")
-        doc_schema = self._merge_with_base_schema(doc_schema)
+        if merge_existing:
+            if doc_type != old_doc_type:
+                raise HTTPException(400, "Merging is only supoported when the docType remains unchanged.")
+
+            merged_doc = { **old_doc, **doc_data }
+        elif extract_json:
+            if not doc_type:
+                raise HTTPException(400, "JSON extraction requires a non-null docType.")
+            elif doc_type == old_doc_type:
+                raise HTTPException(400, "JSON extraction requires a changing docType.")
         
         updated_doc = merged_doc if merge_existing else doc_data
         
         # Validate user access
-        if 'accessGroups' not in doc_data:
-            if not merge_existing:
-                raise HTTPException(400, "The new document must contain an accessGroups field")
-            updated_doc['accessGroups'] = old_doc.get('accessGroups')
-        else:
+        access_groups = doc_data.get('accessGroups')
+        if access_groups:
             # It exists in doc_data, so validate whether it's None or a value
-            updated_doc['accessGroups'] = self.access_manager.validate_new_access_groups(doc_data.get('accessGroups'))
+            updated_doc['accessGroups'] = self.access_manager.validate_new_access_groups(access_groups)
+        else:
+            updated_doc['accessGroups'] = old_doc.get('accessGroups') if merge_existing else None
         
+        if doc_type:
+            doc_schema = self.doc_schemata.get(doc_type)
+            if not doc_schema:
+                raise HTTPException(422, "Unknown doc_type. Register the JSON schema with POST /documentSchemata first.")
+            doc_schema = self._merge_with_base_schema(doc_schema)
+        else:
+            doc_schema = BASE_DOC_SCHEMA
+
         # If merge wasn't allowed and doc_data is missing a path, take the old one
-        # if not updated_doc.get('path'):
-        #     updated_doc['path'] = old_doc['path']
-        
+        if merge_existing and not updated_doc.get('path'):
+            updated_doc['path'] = old_doc.get('path')
+        elif extract_json:
+            # Extract JSON
+            txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
+            doc_text = await safe_async_read(txt_path)
+            extracted_doc_data, _, _, is_extract_valid = await self.extract_json(doc_text, doc_type) # docType can never be None for extractJSON, thus the extracted schema and type will not change, thus can be ignored
+            if is_extract_valid:
+                updated_doc = { **extracted_doc_data, **updated_doc }
+
         jsonschema.validate(updated_doc, doc_schema)
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
 

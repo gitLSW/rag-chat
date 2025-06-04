@@ -73,6 +73,7 @@ UPDATE_DOC_SCHEMA = {
     'type': 'object',
     'properties': {
         'mergeExisting': {'type': 'boolean', 'default': False},
+        'extractJSON': {'type': 'boolean', 'default': False},
         'docData': DOC_DATA_SCHEMA,
     },
     'required': ['docData']
@@ -195,7 +196,7 @@ async def update_doc(doc_id: str, req: Request):
     validate(body, UPDATE_DOC_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.update_doc_data(body['docData'], body['mergeExisting'], req.state.user)
+    return await rag_service.update_doc_data(body['docData'], body['mergeExisting'], body['extractJSON'], req.state.user)
 
 
 @app.get('/documents/{doc_id}')
