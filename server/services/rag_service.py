@@ -175,9 +175,12 @@ class RAGService:
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
             doc_data['docType'] = doc_type
-        else:
+        elif chosen_doc_schema:
             doc_data['docType'] = chosen_doc_type
             doc_schema = self._merge_with_base_schema(chosen_doc_schema)
+        else:
+            doc_data['docType'] = None
+            doc_schema = BASE_DOC_SCHEMA
 
         # Check if doc_data is valid and insert into DB
         jsonschema.validate(doc_data, doc_schema)
