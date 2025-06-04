@@ -9,8 +9,9 @@ from jsonschema_fill_default import fill_default
 from mimetypes import guess_type
 
 from fastapi import FastAPI, Query, Request, Form, HTTPException, File, UploadFile
-from jsonschema import validate
+import jsonschema
 
+from services.api_responses import ValidationError
 from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
 from services.chat_websocket import router as chat_ws_router
@@ -118,7 +119,10 @@ async def delete_user(user_id, req: Request):
 @app.post('/documentSchemata')
 async def add_doc_schema(req: Request):
     body = await req.json()
-    validate(body, ADD_DOC_SCHEMA_SCHEMA)
+    try:
+        jsonschema.validate(body, ADD_DOC_SCHEMA_SCHEMA)
+    except jsonschema.exceptions.ValidationError as e:
+        raise ValidationError(str(e), body)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
     return await rag_service.add_doc_schema(body['docType'], body['docSchema'], req.state.user)
@@ -151,7 +155,10 @@ async def create_doc(req: Request,
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
 
     docData = json.loads(docData)
-    validate(docData, DOC_DATA_SCHEMA)
+    try:
+        jsonschema.validate(docData, DOC_DATA_SCHEMA)
+    except jsonschema.exceptions.ValidationError as e:
+        raise ValidationError(str(e), docData)
 
     # Ensure the directory exists
     upload_dir = get_company_path(req.state.user.company_id, f'uploads/{uuid.uuid4()}')
@@ -192,8 +199,11 @@ async def update_doc(doc_id: str, req: Request):
         elif body_doc_id != doc_id:
             raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
-    fill_default(body, UPDATE_DOC_SCHEMA)
-    validate(body, UPDATE_DOC_SCHEMA)
+    try:
+        fill_default(body, UPDATE_DOC_SCHEMA)
+        jsonschema.validate(body, UPDATE_DOC_SCHEMA)
+    except jsonschema.exceptions.ValidationError as e:
+        raise ValidationError(str(e), body)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
     return await rag_service.update_doc_data(body['docData'], body['mergeExisting'], body['extractJSON'], req.state.user)

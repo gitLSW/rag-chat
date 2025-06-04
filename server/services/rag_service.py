@@ -3,11 +3,13 @@ import re
 import json
 import uuid
 import logging
+
+import jsonschema.exceptions
 from utils import get_env_var, get_company_path, data_path, safe_async_read, safe_async_write
 
 import jsonschema
 from fastapi import HTTPException
-from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
+from services.api_responses import OKResponse, ValidationError, InsufficientAccessError, DocumentNotFoundError
 
 from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
@@ -185,7 +187,11 @@ class RAGService:
             doc_schema = BASE_DOC_SCHEMA
 
         # Check if doc_data is valid and insert into DB
-        jsonschema.validate(doc_data, doc_schema)
+        try:
+            jsonschema.validate(doc_data, doc_schema)
+        except jsonschema.exceptions.ValidationError as e:
+            raise ValidationError(str(e), doc_data)
+        
         self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
         # In case of override, remove all old embedding entries
@@ -263,7 +269,11 @@ class RAGService:
             if extracted_doc_data:
                 updated_doc = { **extracted_doc_data, **updated_doc }
 
-        jsonschema.validate(updated_doc, doc_schema)
+        try:
+            jsonschema.validate(updated_doc, doc_schema)
+        except jsonschema.exceptions.ValidationError as e:
+            raise ValidationError(str(e), updated_doc)
+        
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
 
         logger.info(f"User '{user.id}' at '{user.company_id}' updated doc '{doc_id}'")
@@ -495,7 +505,6 @@ class RAGService:
             if not json_schema:
                 raise ValueError("Unknown doc_type found in LLM response")
             
-            jsonschema.validate(parsed_json, json_schema)
             return parsed_json, doc_type, json_schema
         except (ValueError, IndexError, json.JSONDecodeError) as e:
             # print(f"Failed to extract or parse JSON from model response: {e}")
