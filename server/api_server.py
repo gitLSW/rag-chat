@@ -122,7 +122,7 @@ async def add_doc_schema(req: Request):
     try:
         jsonschema.validate(body, ADD_DOC_SCHEMA_SCHEMA)
     except jsonschema.exceptions.ValidationError as e:
-        raise ValidationError(str(e), body)
+        return ValidationError(str(e), body)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
     return await rag_service.add_doc_schema(body['docType'], body['docSchema'], req.state.user)
@@ -158,7 +158,7 @@ async def create_doc(req: Request,
     try:
         jsonschema.validate(docData, DOC_DATA_SCHEMA)
     except jsonschema.exceptions.ValidationError as e:
-        raise ValidationError(str(e), docData)
+        return ValidationError(str(e), docData)
 
     # Ensure the directory exists
     upload_dir = get_company_path(req.state.user.company_id, f'uploads/{uuid.uuid4()}')
@@ -203,7 +203,7 @@ async def update_doc(doc_id: str, req: Request):
         fill_default(body, UPDATE_DOC_SCHEMA)
         jsonschema.validate(body, UPDATE_DOC_SCHEMA)
     except jsonschema.exceptions.ValidationError as e:
-        raise ValidationError(str(e), body)
+        return ValidationError(str(e), body)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
     return await rag_service.update_doc_data(body['docData'], body['mergeExisting'], body['extractJSON'], req.state.user)

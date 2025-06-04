@@ -190,7 +190,7 @@ class RAGService:
         try:
             jsonschema.validate(doc_data, doc_schema)
         except jsonschema.exceptions.ValidationError as e:
-            raise ValidationError(str(e), doc_data)
+            return ValidationError(str(e), doc_data)
         
         self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
@@ -272,7 +272,7 @@ class RAGService:
         try:
             jsonschema.validate(updated_doc, doc_schema)
         except jsonschema.exceptions.ValidationError as e:
-            raise ValidationError(str(e), updated_doc)
+            return ValidationError(str(e), updated_doc)
         
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
 
