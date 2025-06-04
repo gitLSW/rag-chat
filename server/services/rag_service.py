@@ -8,8 +8,8 @@ import jsonschema.exceptions
 from utils import get_env_var, get_company_path, data_path, safe_async_read, safe_async_write
 
 import jsonschema
-from fastapi import HTTPException
-from services.api_responses import OKResponse, ValidationError, InsufficientAccessError, DocumentNotFoundError
+from fastapi import JSONResponse, HTTPException
+from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
 from pymongo import MongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
@@ -170,11 +170,11 @@ class RAGService:
         #     self.doc_type_classifier.train(texts, doc_types) # TODO: Add train function
 
         # Extract JSON
-        extracted_doc_data, doc_type, doc_schema = await self.extract_json(doc_text, chosen_doc_type)
+        extracted_doc_data, extracted_doc_type, doc_schema = await self.extract_json(doc_text, chosen_doc_type)
 
         # Build final schema
         if extracted_doc_data:
-            doc_data['docType'] = doc_type
+            doc_data['docType'] = extracted_doc_type
             doc_schema = self._merge_with_base_schema(doc_schema)
 
             # Overwrite extracted data with uploaded data
@@ -190,7 +190,10 @@ class RAGService:
         try:
             jsonschema.validate(doc_data, doc_schema)
         except jsonschema.exceptions.ValidationError as e:
-            return ValidationError(str(e), doc_data)
+            doc_data['invalidDocType'] = doc_data['docType']
+            doc_data['docType'] = None
+            jsonschema.validate(doc_data, BASE_DOC_SCHEMA) # Raises an error if not conform to base schema
+            doc_schema = BASE_DOC_SCHEMA
         
         self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
@@ -216,7 +219,9 @@ class RAGService:
         
         doc_data['text'] = doc_text # Add doc_text to response
         
-        return OKResponse(f"Successfully processed Document {doc_id}", doc_data)
+        extract_failed = doc_data.get('invalidDocType')
+        msg = f"Saved Document {doc_id}, but failed to extract." if extract_failed else f"Successfully extracted and saved Document {doc_id}."
+        return OKResponse(msg, doc_data)
 
 
     async def update_doc_data(self, doc_data, merge_existing, extract_json, user):
@@ -227,7 +232,7 @@ class RAGService:
             raise HTTPException(400, "Merging requires unchanged docTypes and extracting JSON requires changing docTypes. Only one can be done at once.")
 
         doc_type = doc_data.get('docType')
-        old_doc_type = old_doc.get('docType')
+        old_doc_type = old_doc.get('docType') or old_doc.get('invalidDocType')
         
         if merge_existing:
             if doc_type != old_doc_type:
@@ -241,6 +246,7 @@ class RAGService:
                 raise HTTPException(400, "JSON extraction requires a changing docType.")
         
         updated_doc = merged_doc if merge_existing else doc_data
+        doc_type = updated_doc.get('docType')
         
         # Validate user access
         access_groups = doc_data.get('accessGroups')
@@ -265,19 +271,24 @@ class RAGService:
             # Extract JSON
             txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
             doc_text = await safe_async_read(txt_path)
-            extracted_doc_data, _, _ = await self.extract_json(doc_text, doc_type) # docType can never be None for extractJSON, thus the extracted schema and type will not change, thus can be ignored
+            # docType can never be None for extractJSON, thus the extracted schema and type will not change, thus can be ignored
+            extracted_doc_data, _, _ = await self.extract_json(doc_text, doc_type)
             if extracted_doc_data:
                 updated_doc = { **extracted_doc_data, **updated_doc }
 
         try:
             jsonschema.validate(updated_doc, doc_schema)
+            if updated_doc.get('invalidDocType'):
+                del updated_doc['invalidDocType']
         except jsonschema.exceptions.ValidationError as e:
-            return ValidationError(str(e), updated_doc)
+            updated_doc['invalidDocType'] = doc_type
+            updated_doc['docType'] = None
+            jsonschema.validate(updated_doc, BASE_DOC_SCHEMA) # Raises an error if not conform to base schema
+            doc_schema = BASE_DOC_SCHEMA
         
         self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
 
         logger.info(f"User '{user.id}' at '{user.company_id}' updated doc '{doc_id}'")
-        
         return OKResponse(f"Successfully updated Document {doc_id}", updated_doc)
 
 

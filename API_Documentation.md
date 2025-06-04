@@ -161,7 +161,7 @@ Finally, the document's text content gets saved as a txt file.
   }
 }
 ```
-- **Response Schema**: Success/Failure response with the added document's metadata and extracted text. If the JSON validation failed, the invalid instance will be provided in the error response under the field `invalidJSON`.
+- **Response Schema**: Success/Failure response with the added document's metadata and extracted text. If the docType's JSON schema validation failed, the returned document data will contain a field called `invalidDocType` and the `docType` will be null.
 ```json
 {
   "type": "object",
@@ -233,7 +233,7 @@ Finally, the document's text content gets saved as a txt file.
   "required": ["docData"]
 }
 ```
-- **Response Schema**: Same as `POST /document` response. If the JSON validation failed, the invalid instance will be provided in the error response under the field `invalidJSON`.
+- **Response Schema**: Same as `POST /document` response. If the docType's JSON schema validation failed, the returned document data will contain a field called `invalidDocType` and the `docType` will be null.
 
 #### `GET /documents/{doc_id}`
 - **Purpose**: Retrieves a document's metadata and text content.
