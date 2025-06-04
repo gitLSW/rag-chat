@@ -168,14 +168,15 @@ class RAGService:
         #     self.doc_type_classifier.train(texts, doc_types) # TODO: Add train function
 
         # Extract JSON
-        extracted_doc_data, doc_type, doc_schema, is_extract_valid = await self.extract_json(doc_text, chosen_doc_type)
+        extracted_doc_data, doc_type, doc_schema = await self.extract_json(doc_text, chosen_doc_type)
 
-        if is_extract_valid:
-            # Build final schema
+        # Build final schema
+        if extracted_doc_data:
+            doc_data['docType'] = doc_type
             doc_schema = self._merge_with_base_schema(doc_schema)
+
             # Overwrite extracted data with uploaded data
             doc_data = { **extracted_doc_data, **doc_data }
-            doc_data['docType'] = doc_type
         elif chosen_doc_schema:
             doc_data['docType'] = chosen_doc_type
             doc_schema = self._merge_with_base_schema(chosen_doc_schema)
@@ -258,8 +259,8 @@ class RAGService:
             # Extract JSON
             txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
             doc_text = await safe_async_read(txt_path)
-            extracted_doc_data, _, _, is_extract_valid = await self.extract_json(doc_text, doc_type) # docType can never be None for extractJSON, thus the extracted schema and type will not change, thus can be ignored
-            if is_extract_valid:
+            extracted_doc_data, _, _ = await self.extract_json(doc_text, doc_type) # docType can never be None for extractJSON, thus the extracted schema and type will not change, thus can be ignored
+            if extracted_doc_data:
                 updated_doc = { **extracted_doc_data, **updated_doc }
 
         jsonschema.validate(updated_doc, doc_schema)
@@ -369,7 +370,7 @@ class RAGService:
 
         json_schema = self.doc_schemata.get(doc_type)
         if not json_schema:
-            return None, doc_type, None, False
+            return None, doc_type, None
 
         prompt = f"""This is a JSON Schema which you need to fill:
 
@@ -421,14 +422,10 @@ class RAGService:
                 raise ValueError("No JSON found in LLM response")
             
             parsed_json = json.loads(answer_json)
-            jsonschema.validate(parsed_json, json_schema)
-            return parsed_json, doc_type, json_schema, True
-        except jsonschema.exceptions.ValidationError as e:
-            print('JSON Schema Validation error:', e)
-            return parsed_json, doc_type, json_schema, False
+            return parsed_json, doc_type, json_schema
         except (ValueError, IndexError, json.JSONDecodeError) as e:
             # print(f"Failed to extract or parse JSON from model response: {e}")
-            return None, doc_type, json_schema, False
+            return None, doc_type, json_schema
     
 
     async def identify_and_extract_json(self, doc_text, sampling_params):
@@ -499,13 +496,10 @@ class RAGService:
                 raise ValueError("Unknown doc_type found in LLM response")
             
             jsonschema.validate(parsed_json, json_schema)
-            return parsed_json, doc_type, json_schema, True
-        except jsonschema.exceptions.ValidationError as e:
-            print('JSON Schema Validation error:', e)
-            return parsed_json, doc_type, json_schema, False
+            return parsed_json, doc_type, json_schema
         except (ValueError, IndexError, json.JSONDecodeError) as e:
             # print(f"Failed to extract or parse JSON from model response: {e}")
-            return None, doc_type, json_schema, False
+            return None, doc_type, json_schema
 
     
     def _merge_with_base_schema(self, json_schema):
