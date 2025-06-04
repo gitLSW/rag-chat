@@ -137,6 +137,7 @@ class RAGService:
         if not allow_override and os.path.exists(txt_path):
             raise HTTPException(409, f"Doc {doc_id} already exists and override was disallowed !")
         
+        chosen_doc_schema = None # prevents UnboundLocalError !
         chosen_doc_type = doc_data.get('docType')
         if chosen_doc_type:
             chosen_doc_schema = self.doc_schemata.get(chosen_doc_type)
