@@ -3,7 +3,7 @@ import shutil
 import uuid
 import json
 import logging
-from utils import logs_path, get_env_var, get_company_path
+from utils import logs_path, cerificates_path, get_env_var, get_company_path
 from jsonschema_fill_default import fill_default
 
 from mimetypes import guess_type
@@ -119,10 +119,7 @@ async def delete_user(user_id, req: Request):
 @app.post('/documentSchemata')
 async def add_doc_schema(req: Request):
     body = await req.json()
-    try:
-        jsonschema.validate(body, ADD_DOC_SCHEMA_SCHEMA)
-    except jsonschema.exceptions.ValidationError as e:
-        return ValidationError(str(e), body)
+    jsonschema.validate(body, ADD_DOC_SCHEMA_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
     return await rag_service.add_doc_schema(body['docType'], body['docSchema'], req.state.user)
@@ -155,10 +152,7 @@ async def create_doc(req: Request,
         raise HTTPException(400, f"Unsupported file type: {mime_type}. Supported types: {', '.join(supported_mime_types)}")
 
     docData = json.loads(docData)
-    try:
-        jsonschema.validate(docData, DOC_DATA_SCHEMA)
-    except jsonschema.exceptions.ValidationError as e:
-        return ValidationError(str(e), docData)
+    jsonschema.validate(docData, DOC_DATA_SCHEMA)
 
     # Ensure the directory exists
     upload_dir = get_company_path(req.state.user.company_id, f'uploads/{uuid.uuid4()}')
@@ -199,11 +193,8 @@ async def update_doc(doc_id: str, req: Request):
         elif body_doc_id != doc_id:
             raise HTTPException(400, "URL document id doesn't match request body's document id!")
     
-    try:
-        fill_default(body, UPDATE_DOC_SCHEMA)
-        jsonschema.validate(body, UPDATE_DOC_SCHEMA)
-    except jsonschema.exceptions.ValidationError as e:
-        return ValidationError(str(e), body)
+    fill_default(body, UPDATE_DOC_SCHEMA)
+    jsonschema.validate(body, UPDATE_DOC_SCHEMA)
 
     rag_service = get_company_rag_service(req.state.user.company_id)
     return await rag_service.update_doc_data(body['docData'], body['mergeExisting'], body['extractJSON'], req.state.user)
@@ -218,7 +209,7 @@ async def get_doc(doc_id, req: Request):
 @app.delete('/documents/{doc_id}')
 async def delete_doc(doc_id, req: Request):
     rag_service = get_company_rag_service(req.state.user.company_id)
-    return rag_service.delete_doc(doc_id, req.state.user)
+    return await rag_service.delete_doc(doc_id, req.state.user)
 
 
 
@@ -237,4 +228,8 @@ import uvicorn
 
 if __name__ == '__main__':
     logger.info("Started Server...")
-    uvicorn.run(app, host='0.0.0.0', port=PORT)
+    uvicorn.run(app,
+                host='0.0.0.0',
+                port=PORT,
+                ssl_keyfile=os.path.join(cerificates_path, 'key.pem'),
+                ssl_certfile=os.path.join(cerificates_path, 'cert.pem'))

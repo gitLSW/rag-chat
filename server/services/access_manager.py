@@ -176,14 +176,3 @@ class AccessManager:
             raise HTTPException(409, f"Unknown access_groups {invalid_access_groups}. Register them with POST /accessGroups first.")
         
         return list(access_groups)
-    
-
-access_managers = {}
-def get_access_manager(company_id):
-    access_manager = access_managers.get(company_id)
-    if access_manager:
-        return access_manager
-    
-    access_manager = AccessManager(company_id)
-    access_managers[company_id] = access_manager
-    return access_manager

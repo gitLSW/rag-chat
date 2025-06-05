@@ -3,6 +3,7 @@ import re
 import json
 import uuid
 import logging
+import asyncio
 
 import jsonschema.exceptions
 from utils import get_env_var, get_company_path, data_path, safe_async_read, safe_async_write
@@ -11,15 +12,15 @@ import jsonschema
 from fastapi import JSONResponse, HTTPException
 from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
-from pymongo import MongoClient
+from pymongo.asynchronous import AsyncMongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer # Pretrained model to convert text into numerical vectors (embeddings)
 
-from services.access_manager import get_access_manager
+from services.access_manager import AccessManager
 from vllm import SamplingParams
 from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
-from services.doc_path_classifier import DocPathClassifier
+from server.services.classifier import Classifier
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +64,19 @@ class RAGService:
         - Loads a sentence transformer for generating vector embeddings of text.
         """
         self.company_id = company_id
-        self.access_manager = get_access_manager(company_id)
+        self.access_manager = AccessManager(company_id)
         self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
         
         # TODO: Add a classifer trained on the docTypes
         try:
-            self.doc_path_classifier = DocPathClassifier(company_id)
-        except FileNotFoundError:
+            self.doc_path_classifier = Classifier(company_id, 'path_classifier')
+        except Exception:
             self.doc_path_classifier = None
+
+        try:
+            self.doc_type_classifier = Classifier(company_id, 'doc_type_classifier')
+        except Exception:
+            self.doc_type_classifier = None
 
         self.schemata_path = get_company_path(company_id, 'doc_schemata.json')
         if os.path.exists(self.schemata_path):
@@ -83,7 +89,7 @@ class RAGService:
             self.doc_schemata = json.loads(f.read())
 
         # Create or connect to database
-        client = MongoClient(MONGO_DB_URL)
+        client = AsyncMongoClient(MONGO_DB_URL)
         self.docs_db = client[company_id]['docs']
 
 
@@ -117,7 +123,7 @@ class RAGService:
     async def delete_doc_schema(self, doc_type, user):
         user.assert_admin()
         
-        if self.docs_db.find_one({ 'doc_type': doc_type }):
+        if await self.docs_db.find_one({ 'doc_type': doc_type }):
             raise HTTPException(409, f"Cannot delete schema '{doc_type}' because it was already used to extract a document.")
         
         doc_schema = self.doc_schemata.get(doc_type)
@@ -163,12 +169,10 @@ class RAGService:
             file_name = os.path.basename(source_path)
             doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
             
-        # Retrain the classifier based on the exsting data, every time a human selects a doc type manually
-        # if chosen_doc_type and 500 < self.docs_db.countDocuments({}):
-        #     txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
-        #     text = await safe_async_read(txt_path)
-        #     self.doc_type_classifier.train(texts, doc_types) # TODO: Add train function
-
+        # Automatically train a classifer after 500 docs are in the db
+        if not self.doc_type_classifier:
+            asyncio.create_task(self.train_doc_type_classifier())
+        
         # Extract JSON
         extracted_doc_data, extracted_doc_type, doc_schema = await self.extract_json(doc_text, chosen_doc_type)
 
@@ -195,7 +199,7 @@ class RAGService:
             jsonschema.validate(doc_data, BASE_DOC_SCHEMA) # Raises an error if not conform to base schema
             doc_schema = BASE_DOC_SCHEMA
         
-        self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
+        await self.docs_db.replace_one({ '_id': doc_id }, doc_data, upsert=True) # Create doc or override existant doc
 
         # In case of override, remove all old embedding entries
         self.vector_db.delete(where={ 'docId': doc_id })
@@ -219,7 +223,7 @@ class RAGService:
         
         doc_data['text'] = doc_text # Add doc_text to response
         
-        extract_failed = doc_data.get('invalidDocType')
+        extract_failed = 'invalidDocType' in doc_data
         msg = f"Saved Document {doc_id}, but failed to extract." if extract_failed else f"Successfully extracted and saved Document {doc_id}."
         return OKResponse(msg, doc_data)
 
@@ -286,7 +290,7 @@ class RAGService:
             jsonschema.validate(updated_doc, BASE_DOC_SCHEMA) # Raises an error if not conform to base schema
             doc_schema = BASE_DOC_SCHEMA
         
-        self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
+        await self.docs_db.replace_one({ '_id': doc_id }, updated_doc)
 
         logger.info(f"User '{user.id}' at '{user.company_id}' updated doc '{doc_id}'")
         return OKResponse(f"Successfully updated Document {doc_id}", updated_doc)
@@ -302,7 +306,7 @@ class RAGService:
         return OKResponse(f"Successfully retrieved Document {doc_id}", doc)
         
     
-    def delete_doc(self, doc_id, user):
+    async def delete_doc(self, doc_id, user):
         # Validate user access
         user.has_doc_access(doc_id)
 
@@ -314,7 +318,7 @@ class RAGService:
         os.remove(txt_path) # TODO: Check if this raises an exception, it should
 
         # Delete from json DB
-        res = self.docs_db.delete_one({ '_id': doc_id })
+        res = await self.docs_db.delete_one({ '_id': doc_id })
         if res.deleted_count == 0:
             raise HTTPException(404, f"Doc {doc_id} doesn't exist.")
 
@@ -358,6 +362,13 @@ class RAGService:
                 valid_docs_data.append(paragraph_data)
 
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
+
+
+    async def train_doc_type_classifier(self):
+        num_classes = len(self.doc_schemata)
+        min_sample_size = num_classes * 50
+        if min_sample_size < await self.docs_db.countDocuments({}):
+            self.doc_type_classifier = self.doc_type_classifier.train(self.company_id, 'doc_type_classifier', self.docs_db, num_classes)
 
 
     async def extract_json(self, doc_text, doc_type=None, sampling_params=None):

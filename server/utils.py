@@ -1,8 +1,8 @@
 import os
 import json
-from dotenv import load_dotenv
 import aiofiles
 from aiorwlock import RWLock
+from dotenv import load_dotenv
 
 
 # Get the root directory of the project
@@ -10,6 +10,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Get
 
 data_path = os.path.join(project_root, 'data')
 logs_path = os.path.join(project_root, 'logs')
+cerificates_path = os.path.join(project_root, 'certificates')
 server_path = os.path.join(project_root, 'server')
 
 
