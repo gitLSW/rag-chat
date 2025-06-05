@@ -12,7 +12,7 @@ import jsonschema
 from fastapi import HTTPException
 from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
-from pymongo.asynchronous import AsyncMongoClient
+from pymongo import AsyncMongoClient
 import chromadb  # A vector database for storing and retrieving paragraph embeddings efficiently
 from sentence_transformers import SentenceTransformer # Pretrained model to convert text into numerical vectors (embeddings)
 
