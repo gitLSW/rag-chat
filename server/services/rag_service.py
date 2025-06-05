@@ -364,6 +364,7 @@ class RAGService:
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
 
+    # TODO: Retrain after a new doc schema was added and there are 50 docs of that type
     async def train_doc_type_classifier(self):
         num_classes = len(self.doc_schemata)
         min_sample_size = num_classes * 50
