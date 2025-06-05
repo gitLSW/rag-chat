@@ -24,7 +24,7 @@ class Classifier:
     
 
     @classmethod
-    async def load_from_dir(cls, company_id, plk_dir_name):
+    def load_from_dir(cls, company_id, plk_dir_name):
         vectorizer_path, classifier_path = Classifier._get_model_paths(company_id, plk_dir_name)
 
         try:
