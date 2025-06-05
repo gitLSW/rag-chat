@@ -69,12 +69,12 @@ class RAGService:
         
         # TODO: Add a classifer trained on the docTypes
         try:
-            self.doc_path_classifier = Classifier(company_id, 'path_classifier')
+            self.doc_path_classifier = Classifier.load_from_dir(company_id, 'path_classifier')
         except Exception:
             self.doc_path_classifier = None
 
         try:
-            self.doc_type_classifier = Classifier(company_id, 'doc_type_classifier')
+            self.doc_type_classifier = Classifier.load_from_dir(company_id, 'doc_type_classifier')
         except Exception:
             self.doc_type_classifier = None
 
