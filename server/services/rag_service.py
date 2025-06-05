@@ -20,7 +20,7 @@ from services.access_manager import AccessManager
 from vllm import SamplingParams
 from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
-from server.services.classifier import Classifier
+from services.classifier import Classifier
 
 logger = logging.getLogger(__name__)
 
