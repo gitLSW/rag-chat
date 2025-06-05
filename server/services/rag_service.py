@@ -167,7 +167,7 @@ class RAGService:
         if self.doc_path_classifier and not doc_data.get('path'):
             # Classify Document into a path if non existant
             file_name = os.path.basename(source_path)
-            doc_data['path'] = self.doc_path_classifier.classify_doc(doc_text) + '/' + file_name
+            doc_data['path'] = self.doc_path_classifier.classify(doc_text) + '/' + file_name
             
         # Automatically train a classifer after 500 docs are in the db
         if not self.doc_type_classifier:
@@ -395,10 +395,10 @@ class RAGService:
             )
 
         if not doc_type:
-            # if self.doc_type_classifier:
-            #     doc_type = self.doc_type_classifier.classify_doc(doc_text)
-            # else:
-            return await self.identify_and_extract_json(doc_text, sampling_params)
+            if self.doc_type_classifier:
+                doc_type = self.doc_type_classifier.classify(doc_text)
+            else:
+                return await self.identify_and_extract_json(doc_text, sampling_params)
 
         json_schema = self.doc_schemata.get(doc_type)
         if not json_schema:

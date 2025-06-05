@@ -16,7 +16,7 @@ class Classifier:
         self.classifier = classifier
         
 
-    def classify_doc(self, content):
+    def classify(self, content):
         # Vectorize the input and predict.
         doc_vector = self.vectorizer.transform([content])
         prediction = self.classifier.predict(doc_vector)
