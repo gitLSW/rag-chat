@@ -146,7 +146,7 @@ Finally, the document's text content gets saved as a txt file.
     },
     "docType": {
       "type": ["string", "null"],
-      "description": "Document type that matches a predefined schema"
+      "description": "Document type that matches a predefined schema. If null, the sustem tries to determine the docType."
     },
     "accessGroups": {
       "type": ["array", "null"],
