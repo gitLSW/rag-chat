@@ -9,7 +9,7 @@ import jsonschema.exceptions
 from utils import get_env_var, get_company_path, data_path, safe_async_read, safe_async_write
 
 import jsonschema
-from fastapi import JSONResponse, HTTPException
+from fastapi import HTTPException
 from services.api_responses import OKResponse, InsufficientAccessError, DocumentNotFoundError
 
 from pymongo.asynchronous import AsyncMongoClient
