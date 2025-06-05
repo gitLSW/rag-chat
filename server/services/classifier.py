@@ -12,12 +12,12 @@ class Classifier:
         self.company_id = company_id
 
         self.plk_dir_path = get_company_path(company_id, plk_dir_name)
-        self.classifier_path = os.path.join(self.plk_dir_path, 'classifier.pkl')
         self.vectorizer_path = os.path.join(self.plk_dir_path, 'vectorizer.pkl')
+        self.classifier_path = os.path.join(self.plk_dir_path, 'classifier.pkl')
 
         try:
-            self.vectorizer = joblib.load(self.classifier_path)
-            self.classifier = joblib.load(self.vectorizer_path)
+            self.vectorizer = joblib.load(self.vectorizer_path)
+            self.classifier = joblib.load(self.classifier_path)
         except FileNotFoundError:
             raise FileNotFoundError(f"No classifier files found at path {self.plk_dir_path} found.")
         
@@ -28,7 +28,7 @@ class Classifier:
         prediction = self.classifier.predict(doc_vector)
         return prediction[0]
     
-    
+
     async def train(self, docs_db_coll):
         """
         Trains the classifier using documents from the MongoDB collection.
@@ -105,3 +105,5 @@ class Classifier:
         
         print(f"Model and vectorizer have been saved to '{self.vectorizer_path}' and '{self.classifier_path}'.")
         print("Training complete.")
+
+        return self.vectorizer, self.classifier
