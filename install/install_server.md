@@ -53,6 +53,11 @@ sudo ufw allow 7500/tcp
 sudo ufw reload
 ```
 
+### Generate SSL files:
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout certificates/key.pem -out certificates/cert.pem -days 365 -nodes
+```
+
 ### Create the system service file:
 ```bash
 bash create_system_service.sh
