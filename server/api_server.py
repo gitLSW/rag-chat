@@ -11,7 +11,6 @@ from mimetypes import guess_type
 from fastapi import FastAPI, Query, Request, Form, HTTPException, File, UploadFile
 import jsonschema
 
-from services.api_responses import ValidationError
 from services.rag_service import get_company_rag_service
 from services.doc_extractor import DocExtractor
 from services.chat_websocket import router as chat_ws_router
