@@ -367,7 +367,7 @@ class RAGService:
     # TODO: Retrain after a new doc schema was added and there are 50 docs of that type
     async def train_doc_type_classifier(self):
         num_classes = len(self.doc_schemata)
-        min_sample_size = num_classes * 50
+        min_sample_size = num_classes * 1 # TODO: Reset to * 50
         if min_sample_size < await self.docs_db.countDocuments({}):
             self.doc_type_classifier = self.doc_type_classifier.train(self.company_id, 'doc_type_classifier', self.docs_db, num_classes)
 
