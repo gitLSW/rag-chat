@@ -55,7 +55,7 @@ class LLMChat:
                     show_chat_history = False) -> AsyncGenerator[str, None]:
         new_entry = ChatEntry(message, use_db, rag_search_depth, show_chat_history)
 
-        self.abort()
+        await self.abort()
         async for chunk in self._generate(new_entry):
             yield chunk
 
@@ -64,7 +64,7 @@ class LLMChat:
         if not self._curr_chat_entry:
             raise ValueError("Nothing to continue")
         
-        self.pause()
+        await self.pause()
         async for chunk in self._generate(self._curr_chat_entry):
             yield chunk
         
@@ -128,7 +128,7 @@ class LLMChat:
             'userId': self.user_id,
             'chatId': self.chat_id
         })
-        self.abort()
+        await self.abort()
 
 
     async def pause(self):
@@ -144,16 +144,16 @@ class LLMChat:
             await self.llm_service.pause(self._answer_req_id)
 
 
-    def abort(self):
+    async def abort(self):
         if self._db_query_req_id:
-            asyncio.create_task(self.llm_service.abort(self._db_query_req_id))
+            await self.llm_service.abort(self._db_query_req_id)
 
         if self._summarize_doc_req_ids:
             for summarize_doc_req_id in self._summarize_doc_req_ids.values():
-                asyncio.create_task(self.llm_service.abort(summarize_doc_req_id))
+                await self.llm_service.abort(summarize_doc_req_id)
 
         if self._answer_req_id:
-            asyncio.create_task(self.llm_service.abort(self._answer_req_id))
+            await self.llm_service.abort(self._answer_req_id)
 
         self._db_query_req_id = None
         self._summarize_doc_req_ids = {}
