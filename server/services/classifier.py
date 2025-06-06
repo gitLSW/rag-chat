@@ -78,7 +78,7 @@ class Classifier:
         # Sample limit docs
         prepare_doc_tasks = []
         async for doc in docs_coll.aggregate([{ "$sample": { "size": limit } }]):
-            prepare_doc_tasks.append(prepare_doc_training_data(doc))
+            prepare_doc_tasks.append(asyncio.create_task(prepare_doc_training_data(doc)))
 
         texts = []
         labels = []
