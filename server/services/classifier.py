@@ -72,9 +72,7 @@ class Classifier:
                 
         
         prepare_doc_tasks = []
-        random_docs_cursor = docs_coll.aggregate([
-            { "$sample": { "size": limit } }
-        ])
+        random_docs_cursor = docs_coll.aggregate([{ "$sample": { "size": limit } }])
         async for doc in random_docs_cursor:
             doc_id = doc.get('id') # Use .get for safety
             doc_type = doc.get('docType')
