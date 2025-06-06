@@ -56,10 +56,15 @@ class Classifier:
             limit = MAX_LIMIT
 
         # Fetch data from MongoDB and read corresponding files
-        async def prepare_doc_training_data(doc_id, doc_type):
+        async def prepare_doc_training_data(doc):
+            doc_id = doc.get('id')
+            doc_type = doc.get('docType')
+
+            if not doc_type or not doc_id:
+                return None
+            
             txt_path = get_company_path(company_id, f'docs/{doc_id}.txt')
             
-            # Use the synchronous wrapper for safe_async_read
             try:
                 content = await safe_async_read(txt_path)
             except Exception:
@@ -70,17 +75,10 @@ class Classifier:
             else:
                 return None
                 
-        
+        # Sample limit docs
         prepare_doc_tasks = []
-        random_docs_cursor = docs_coll.aggregate([{ "$sample": { "size": limit } }])
-        async for doc in random_docs_cursor:
-            doc_id = doc.get('id') # Use .get for safety
-            doc_type = doc.get('docType')
-
-            if not doc_type:
-                continue
-            
-            prepare_doc_tasks.append(prepare_doc_training_data(doc_id, doc_type))
+        async for doc in docs_coll.aggregate([{ "$sample": { "size": limit } }]):
+            prepare_doc_tasks.append(prepare_doc_training_data(doc))
 
         texts = []
         labels = []
