@@ -18,7 +18,7 @@ from sentence_transformers import SentenceTransformer # Pretrained model to conv
 
 from services.access_manager import AccessManager
 from vllm import SamplingParams
-from services.vllm_service import LLMService, tokenizer, LLM_MAX_TEXT_LEN
+from services.vllm_service import LLMService, llm_tokenizer, LLM_MAX_TEXT_LEN
 from services.doc_extractor import DocExtractor
 from services.classifier import Classifier
 
@@ -107,7 +107,7 @@ class RAGService:
         
         self.doc_schemata[doc_type] = json_schema
         doc_schemata_str = json.dumps(self.doc_schemata)
-        doc_schemata_tokens = tokenizer.encode(doc_schemata_str, add_special_tokens=False)
+        doc_schemata_tokens = llm_tokenizer.encode(doc_schemata_str, add_special_tokens=False)
         if int(LLM_MAX_TEXT_LEN * 0.5) < len(doc_schemata_tokens):
             raise HTTPException(409, "Too many json schemata are registered at this company. The LLM will not be able to properly extract data for so many classes.")
         

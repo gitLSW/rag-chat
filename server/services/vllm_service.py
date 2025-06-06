@@ -106,8 +106,8 @@ engine_args = AsyncEngineArgs(
 )
 llm = AsyncLLMEngine.from_engine_args(engine_args)
 
-tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
-LLM_MAX_TEXT_LEN = getattr(AutoConfig.from_pretrained(LLM_MODEL), 'max_position_embeddings', tokenizer.model_max_length)
+llm_tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
+LLM_MAX_TEXT_LEN = getattr(AutoConfig.from_pretrained(LLM_MODEL), 'max_position_embeddings', llm_tokenizer.model_max_length)
 
 @dataclass
 class RequestState:
@@ -208,13 +208,13 @@ class LLMService:
 
     def _get_chunks(self, prompt, context, history, allow_chunking):
         # Tokenize prompt and optional context
-        prompt_ids = tokenizer.encode("\n\n" + prompt, add_special_tokens=False)
+        prompt_ids = llm_tokenizer.encode("\n\n" + prompt, add_special_tokens=False)
         
         if LLM_MAX_TEXT_LEN < len(prompt_ids):
             raise ValueError("Prompt is too long for LLM context frame")
         
-        context_ids = ((tokenizer.encode(history, add_special_tokens=False) if history else []) +
-                       (tokenizer.encode(context, add_special_tokens=False) if context else []))
+        context_ids = ((llm_tokenizer.encode(history, add_special_tokens=False) if history else []) +
+                       (llm_tokenizer.encode(context, add_special_tokens=False) if context else []))
         
         if LLM_MAX_TEXT_LEN < len(prompt_ids) + len(context_ids): # chunking occurrs
             # Enforce prompt size <= 1/4 frame
@@ -248,11 +248,11 @@ class LLMService:
         try:
             req = self._current_requests.get(req_id)
             if req:
-                input_token_ids = chunk[-tokenizer.model_max_length:] # Add input to request chunk state
+                input_token_ids = chunk[-LLM_MAX_TEXT_LEN:] # Add input to request chunk state
                 req.chunk_states[chunk_req_id] = input_token_ids
 
             # Decode tokens back to string prompt for generate()
-            prompt_text = tokenizer.decode(chunk, skip_special_tokens=True)
+            prompt_text = llm_tokenizer.decode(chunk, skip_special_tokens=True)
 
             prev_text = ""
             async for output in llm.generate(prompt=prompt_text,
@@ -261,7 +261,7 @@ class LLMService:
                 req = self._current_requests.get(req_id) # Always get again in case it was aborted (= deleted)
                 if req:
                     token_ids = input_token_ids + output.outputs[0].token_ids
-                    req.chunk_states[chunk_req_id] = token_ids[-tokenizer.model_max_length:]
+                    req.chunk_states[chunk_req_id] = token_ids[-LLM_MAX_TEXT_LEN:]
                 
                 new_text_chunk = output.outputs[0].text[len(prev_text):]
                 await queues[chunk_index].put(new_text_chunk) # Put the chunk in the queue
