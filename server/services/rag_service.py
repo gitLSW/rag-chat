@@ -65,9 +65,8 @@ class RAGService:
         """
         self.company_id = company_id
         self.access_manager = AccessManager(company_id)
-        self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id) # TODO: Check if this raises an exception, it should
+        self.vector_db = RAGService.vector_db.get_or_create_collection(name=company_id)
         
-        # TODO: Add a classifer trained on the docTypes
         try:
             self.doc_path_classifier = Classifier.load_from_dir(company_id, 'path_classifier')
         except Exception:
@@ -314,8 +313,8 @@ class RAGService:
 
         # Delete file
         txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
-        os.remove(txt_path) # TODO: Check if this raises an exception, it should
-
+        os.remove(txt_path)
+        
         # Delete from json DB
         res = await self.docs_db.delete_one({ '_id': doc_id })
         if res.deleted_count == 0:
@@ -363,12 +362,11 @@ class RAGService:
         return OKResponse(f"Found {len(valid_docs_data)}", valid_docs_data)
 
 
-    # TODO: Retrain after a new doc schema was added and there are 50 docs of that type
     async def train_doc_type_classifier(self):
         num_classes = len(self.doc_schemata)
         min_sample_size = num_classes * 1 # TODO: Reset to * 50
         if (not self.doc_type_classifier or num_classes != self.doc_type_classifier.num_classes) and min_sample_size < await self.docs_db.countDocuments({}):
-            self.doc_type_classifier = self.doc_type_classifier.train(self.company_id, 'doc_type_classifier', self.docs_db, num_classes)
+            self.doc_type_classifier = Classifier.train(self.company_id, 'doc_type_classifier', self.docs_db, num_classes)
     
 
     async def extract_json(self, doc_text, doc_type=None, sampling_params=None):
