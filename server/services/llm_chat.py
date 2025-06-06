@@ -28,7 +28,6 @@ class ChatEntry:
 
 
 class LLMChat:
-    
     def __init__(self, user_id, company_id, user_access_roles):
         self.user_id = user_id
         self.chat_id = str(uuid.uuid4())
@@ -168,6 +167,23 @@ class LLMChat:
 
     async def _summarize_docs(self, docs_data, message):
         """Process documents concurrently to generate summaries and collect metadata."""
+        async def _load_and_summarize_doc(doc_id, message):
+            # Loads and summarizes a single document.
+            txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
+            try:
+                doc_text = await safe_async_read(txt_path)
+            except Exception:
+                return "" # TODO: Maybe throw exception
+
+            message = f"Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}"
+                    
+            req_id = f'{self.user_id}-{self.chat_id}-doc-{doc_id}'
+            generator = LLMChat.llm_service.query(message, doc_text, req_id=req_id)
+            self._summarize_doc_req_ids[doc_id] = req_id
+
+            return await _resume_doc_summary(generator)
+    
+    
         async def _resume_doc_summary(generator):
             summary = ""
             try:
@@ -178,9 +194,9 @@ class LLMChat:
 
             return re.sub(r"<think>.*?</think>", "", summary, flags=re.DOTALL)
 
+
         doc_sources_map = defaultdict(set)
         summarize_tasks = []
-        
         for doc_data in docs_data:
             doc_id = doc_data['docId']
             page_num = doc_data['pageNum']
@@ -193,24 +209,9 @@ class LLMChat:
             req_id = self._summarize_doc_req_ids.get(doc_id)
             if req_id:
                 generator = self.llm_service.resume(req_id)
-                summarize_tasks.append(_resume_doc_summary(generator))
+                summarize_tasks.append(asyncio.create_task(_resume_doc_summary(generator)))
             else:
-                async def _load_and_summarize_doc(doc_id, message):
-                    # Loads and summarizes a single document.
-                    txt_path = get_company_path(self.company_id, f'docs/{doc_id}.txt')
-                    try:
-                        doc_text = await safe_async_read(txt_path)
-                    except Exception:
-                        return "" # TODO: Maybe throw exception
-
-                    message = f"Summarize all the relevant information and facts needed to answer the following message from the text:\n\n{message}"
-                    
-                    req_id = f'{self.user_id}-{self.chat_id}-doc-{doc_id}'
-                    generator = LLMChat.llm_service.query(message, doc_text, req_id=req_id)
-                    self._summarize_doc_req_ids[doc_id] = req_id
-
-                    return await _resume_doc_summary(generator)
-                summarize_tasks.append(_load_and_summarize_doc(doc_id, message))
+                summarize_tasks.append(asyncio.create_task(_load_and_summarize_doc(doc_id, message)))
     
         # Run all LLM summaries concurrently
         doc_summaries = await asyncio.gather(*summarize_tasks)
