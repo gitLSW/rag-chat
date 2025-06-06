@@ -131,29 +131,29 @@ class LLMChat:
         self.abort()
 
 
-    def pause(self):
+    async def pause(self):
         """Stop the current generation safely without affecting other chats."""
         if self._db_query_req_id:
-            self.llm_service.pause(self._db_query_req_id)
+            await self.llm_service.pause(self._db_query_req_id)
 
         if self._summarize_doc_req_ids:
             for summarize_doc_req_id in self._summarize_doc_req_ids.values():
-                self.llm_service.pause(summarize_doc_req_id)
+                await self.llm_service.pause(summarize_doc_req_id)
 
         if self._answer_req_id:
-            self.llm_service.pause(self._answer_req_id)
+            await self.llm_service.pause(self._answer_req_id)
 
 
     def abort(self):
         if self._db_query_req_id:
-            self.llm_service.abort(self._db_query_req_id)
+            asyncio.create_task(self.llm_service.abort(self._db_query_req_id))
 
         if self._summarize_doc_req_ids:
             for summarize_doc_req_id in self._summarize_doc_req_ids.values():
-                self.llm_service.abort(summarize_doc_req_id)
+                asyncio.create_task(self.llm_service.abort(summarize_doc_req_id))
 
         if self._answer_req_id:
-            self.llm_service.abort(self._answer_req_id)
+            asyncio.create_task(self.llm_service.abort(self._answer_req_id))
 
         self._db_query_req_id = None
         self._summarize_doc_req_ids = {}
