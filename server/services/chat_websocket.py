@@ -101,7 +101,7 @@ async def websocket_query(websocket: WebSocket):
             elif isinstance(action, PauseChatAction):
                 chat = active_chats.get(action.chat_id)
                 if chat:
-                    chat.pause()
+                    await chat.pause()
                     await websocket.send_text(f"[PAUSED] Chat {action.chat_id}")
                 else:
                     await websocket.send_text(f"[ERROR] Chat {action.chat_id} not found")
@@ -127,7 +127,7 @@ async def websocket_query(websocket: WebSocket):
             elif isinstance(action, DeleteChatAction):
                 chat = active_chats.pop(action.chat_id, None)
                 if chat:
-                    chat.abort()
+                    await chat.abort()
                     del chat
                     await websocket.send_text(f"[DELETED] Chat {action.chat_id}")
                 else:
@@ -135,10 +135,10 @@ async def websocket_query(websocket: WebSocket):
 
     except WebSocketDisconnect:
         for chat in active_chats.values():
-            chat.pause()
+            await chat.pause()
         active_chats.clear()
     except Exception as e:
         await websocket.send_text(f"[ERROR] {str(e)}")
         for chat in active_chats.values():
-            chat.abort()
+            await chat.abort()
         active_chats.clear()
