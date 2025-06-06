@@ -169,9 +169,8 @@ class RAGService:
             file_name = os.path.basename(source_path)
             doc_data['path'] = self.doc_path_classifier.classify(doc_text) + '/' + file_name
             
-        # Automatically train a classifer after 500 docs are in the db
-        if not self.doc_type_classifier:
-            asyncio.create_task(self.train_doc_type_classifier())
+        # Automatically train a classifer
+        asyncio.create_task(self.train_doc_type_classifier())
         
         # Extract JSON
         extracted_doc_data, extracted_doc_type, doc_schema = await self.extract_json(doc_text, chosen_doc_type)
@@ -368,9 +367,9 @@ class RAGService:
     async def train_doc_type_classifier(self):
         num_classes = len(self.doc_schemata)
         min_sample_size = num_classes * 1 # TODO: Reset to * 50
-        if min_sample_size < await self.docs_db.countDocuments({}):
+        if (not self.doc_type_classifier or num_classes != self.doc_type_classifier.num_classes) and min_sample_size < await self.docs_db.countDocuments({}):
             self.doc_type_classifier = self.doc_type_classifier.train(self.company_id, 'doc_type_classifier', self.docs_db, num_classes)
-
+    
 
     async def extract_json(self, doc_text, doc_type=None, sampling_params=None):
         """

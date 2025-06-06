@@ -23,6 +23,11 @@ class Classifier:
         return prediction[0]
     
 
+    @property
+    def num_classes(self):
+        return self.classifier.classes_
+    
+
     @classmethod
     def load_from_dir(cls, company_id, plk_dir_name):
         vectorizer_path, classifier_path = Classifier._get_model_paths(company_id, plk_dir_name)
